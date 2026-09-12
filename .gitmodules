@@ -1,3 +1,6 @@
+[submodule "firmware"]
+	path = firmware
+	url = https://github.com/Khoaitay51/SmartParkingSystem_firmware.git
 [submodule "frontend"]
 	path = frontend
 	url = https://github.com/Khoaitay51/SmartParkingSystem_frontend.git
