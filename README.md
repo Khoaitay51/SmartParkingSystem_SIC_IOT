@@ -233,6 +233,9 @@ Dữ liệu bãi xe được đồng bộ tại node `/parking/lots/lot_mydinh`:
 
 | Tên tệp | Chức năng |
 | :--- | :--- |
+| **`kich_ban_thuyet_trinh.md`** | **Kịch Bản Nói Thuyết Trình (Speaker Notes):** Lời thoại chi tiết từng slide, phân bổ thời gian và gợi ý trả lời phản biện Q&A |
+| **`mo_slide_bao_cao.bat`** | **1-Click mở Slide Báo Cáo Thuyết Trình:** Mở file `slide_bao_cao.html` với hiệu ứng chuyển động, toàn màn hình và tóm tắt toàn bộ dự án |
+| **`slide_bao_cao.html`** | Slide thuyết trình báo cáo hoàn chỉnh được xây dựng bằng HTML5, CSS3, JavaScript (tích hợp nút bật kịch bản nói phím `S`) |
 | **`xem_log_firebase.bat`** | **Xem Live Log thời gian thực từ Firebase:** Hiển thị tức thì mọi sự kiện xe vào/ra, OCR, mở barrier, còi kêu từ Terminal |
 | **`xem_log_esp32.bat`** | **Xem Log Serial trực tiếp từ chip ESP32:** Đọc dữ liệu debug 115200 baud qua cáp USB |
 | **`dieu_khien_xe.bat`** | Mở **bảng điều khiển Terminal tương tác** (quét OCR `v1`-`r3`, `ocr`, đổi slot `1`-`4`, mở barrier `in`/`out`, chỉnh khoảng cách `d1`-`d3`) |

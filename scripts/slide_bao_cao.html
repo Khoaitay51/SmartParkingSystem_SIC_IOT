@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Báo Cáo Dự Án: Hệ Thống Bãi Đỗ Xe Thông Minh (Smart Parking - SIC IoT)</title>
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --bg-card: rgba(15, 23, 42, 0.88);
+      --bg-card-border: rgba(255, 255, 255, 0.14);
+      --text-main: #f8fafc;
+      --text-muted: #cbd5e1;
+      --accent-green: #10b981;
+      --accent-cyan: #06b6d4;
+      --accent-blue: #3b82f6;
+      --accent-purple: #8b5cf6;
+      --accent-amber: #f59e0b;
+      --grad-brand: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      font-family: 'Times New Roman', Times, Georgia, serif !important;
+    }
+
+    /* Quy tắc phông chữ: Chỉ tiêu đề và nhãn mới in đậm, nội dung thông thường in thường */
+    h1, h2, h3, h4, th, .card-title, .slide-title, .brand-title, .metric-value, .slide-tag, .pill, .btn-nav, .kbd {
+      font-weight: bold !important;
+    }
+
+    p, span, li, td, .slide-desc, .card-text, .code-box, strong, b {
+      font-weight: normal !important;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Ambient background lighting */
+    .ambient-glow {
+      position: absolute;
+      top: -15%;
+      left: -10%;
+      width: 55vw;
+      height: 55vw;
+      background: radial-gradient(circle, rgba(16, 185, 129, 0.12) 0%, rgba(6, 182, 212, 0.04) 45%, transparent 70%);
+      filter: blur(90px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .ambient-glow-2 {
+      position: absolute;
+      bottom: -15%;
+      right: -10%;
+      width: 55vw;
+      height: 55vw;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.12) 0%, rgba(139, 92, 246, 0.04) 45%, transparent 70%);
+      filter: blur(90px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Top Progress Bar */
+    .progress-bar-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      z-index: 100;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      width: 9.09%;
+      background: var(--grad-brand);
+      transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 0 14px rgba(16, 185, 129, 0.8);
+    }
+
+    /* Header controls */
+    header {
+      position: relative;
+      z-index: 10;
+      padding: 16px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(10, 14, 23, 0.78);
+      backdrop-filter: blur(14px);
+    }
+
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 1.25rem;
+      letter-spacing: 0.02em;
+    }
+
+    .brand-badge {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 4px;
+      background: rgba(16, 185, 129, 0.18);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: var(--accent-green);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .slide-indicator {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+    }
+    .slide-indicator span {
+      color: var(--accent-green);
+      font-size: 1.25rem;
+    }
+
+    .btn-icon {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: var(--text-main);
+      width: 38px;
+      height: 38px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .btn-icon:hover {
+      background: rgba(255, 255, 255, 0.18);
+      transform: scale(1.05);
+    }
+
+    /* Main Slide Deck */
+    main {
+      flex: 1;
+      position: relative;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 48px;
+    }
+
+    .slide {
+      position: absolute;
+      width: 94%;
+      max-width: 1280px;
+      height: 84vh;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(20px) scale(0.98);
+      transition: all 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .slide.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0) scale(1);
+    }
+
+    /* Typography */
+    .slide-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.15);
+      border: 1px solid rgba(6, 182, 212, 0.35);
+      padding: 4px 14px;
+      border-radius: 4px;
+      margin-bottom: 12px;
+      width: fit-content;
+    }
+
+    .slide-title {
+      font-size: 2.45rem;
+      line-height: 1.2;
+      margin-bottom: 12px;
+      color: #ffffff;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    }
+
+    .slide-desc {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 980px;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+
+    /* Grid Layouts */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 8px;
+      padding: 20px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.5);
+      position: relative;
+      transition: all 0.3s;
+    }
+    .card:hover {
+      border-color: rgba(255, 255, 255, 0.28);
+      transform: translateY(-2px);
+    }
+    .card.highlight {
+      border-color: rgba(16, 185, 129, 0.5);
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(15, 23, 42, 0.92) 100%);
+    }
+
+    .card-title {
+      font-size: 1.28rem;
+      color: #fff;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-text {
+      font-size: 1.02rem;
+      color: var(--text-muted);
+      line-height: 1.65;
+    }
+
+    /* Badges & Pills */
+    .pill {
+      display: inline-block;
+      font-size: 0.82rem;
+      padding: 3px 10px;
+      border-radius: 4px;
+    }
+    .pill-green { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+    .pill-blue  { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
+    .pill-cyan  { background: rgba(6, 182, 212, 0.2); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.4); }
+    .pill-amber { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .pill-purple{ background: rgba(139, 92, 246, 0.2); color: #c084fc; border: 1px solid rgba(139, 92, 246, 0.4); }
+
+    /* Tables */
+    .styled-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 1.02rem;
+      margin-top: 8px;
+    }
+    .styled-table th {
+      background: rgba(255, 255, 255, 0.08);
+      color: #ffffff;
+      text-align: left;
+      padding: 11px 14px;
+      border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .styled-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      color: #e2e8f0;
+    }
+    .styled-table tr:hover td {
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    /* Metric counter box */
+    .metric-card {
+      text-align: center;
+      padding: 18px 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+    }
+    .metric-value {
+      font-size: 2.2rem;
+      color: #34d399;
+      margin-bottom: 4px;
+      line-height: 1;
+    }
+    .metric-label {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+    }
+
+    /* Code Block Box */
+    .code-box {
+      background: #050811;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 6px;
+      padding: 12px 16px;
+      font-size: 0.95rem;
+      color: #6ee7b7;
+      line-height: 1.65;
+      overflow-x: auto;
+    }
+
+    /* Slide Footer Controls */
+    footer {
+      position: relative;
+      z-index: 10;
+      padding: 14px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(10, 14, 23, 0.78);
+      backdrop-filter: blur(14px);
+    }
+
+    .keyboard-hints {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+    .kbd {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 0.85rem;
+      color: #fff;
+    }
+
+    .nav-buttons {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .btn-nav {
+      background: var(--grad-brand);
+      color: #022c22;
+      font-size: 1rem;
+      border: none;
+      border-radius: 6px;
+      padding: 9px 22px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn-nav:hover {
+      box-shadow: 0 0 16px rgba(16, 185, 129, 0.7);
+      transform: translateY(-1px);
+    }
+    .btn-nav-prev {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .btn-nav-prev:hover {
+      background: rgba(255, 255, 255, 0.18);
+      box-shadow: none;
+    }
+
+    .dots-container {
+      display: flex;
+      gap: 7px;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.25);
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .dot.active {
+      width: 26px;
+      border-radius: 5px;
+      background: var(--accent-green);
+      box-shadow: 0 0 10px var(--accent-green);
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      padding: 6px 18px;
+      border-radius: 4px;
+      font-size: 0.95rem;
+      color: var(--accent-green);
+      margin-bottom: 20px;
+    }
+    .hero-h1 {
+      font-size: 3.2rem;
+      line-height: 1.2;
+      margin-bottom: 20px;
+      color: #ffffff;
+      text-shadow: 0 4px 16px rgba(0,0,0,0.6);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="ambient-glow"></div>
+  <div class="ambient-glow-2"></div>
+
+  <div class="progress-bar-container">
+    <div class="progress-bar-fill" id="progressBar"></div>
+  </div>
+
+  <header>
+    <div class="brand-title">
+      <span>HỆ THỐNG BÃI ĐỖ XE THÔNG MINH (SMART PARKING)</span>
+      <span class="brand-badge">SIC IoT · ESP32 &amp; FIREBASE</span>
+    </div>
+    <div class="header-actions">
+      <button class="btn-icon" id="notesToggleBtn" title="Bật / Tắt Kịch Bản Thuyết Trình (Phím S)" style="width: auto; padding: 0 14px; gap: 6px; font-size: 0.95rem; color: #34d399; border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.12);">
+        🎙️ <span>Kịch Bản Nói (S)</span>
+      </button>
+      <div class="slide-indicator">
+        Slide <span id="currentSlideNum">01</span> / <span id="totalSlideNum">11</span>
+      </div>
+      <button class="btn-icon" id="fullscreenBtn" title="Toàn màn hình (F)">
+        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- SLIDE 1: TRANG BÌA -->
+    <div class="slide active" id="slide-1">
+      <div class="hero-badge">
+        <span>BÁO CÁO KỸ THUẬT DỰ ÁN SIC IOT</span>
+      </div>
+      <h1 class="hero-h1">HỆ THỐNG QUẢN LÝ BÃI ĐỖ XE THÔNG MINH<br><span style="color: #34d399;">(SMART PARKING SYSTEM)</span></h1>
+      <p class="slide-desc" style="font-size: 1.25rem;">
+        Nghiên cứu thiết kế và triển khai giải pháp quản lý bãi đỗ xe tự động hóa hai chiều thời gian thực: Tích hợp vi điều khiển ESP32, cơ sở dữ liệu thời gian thực Firebase NoSQL, động cơ nhận diện biển số AI Camera OCR và hệ thống quản trị Web Client với logic thu phí tự động.
+      </p>
+
+      <div class="grid-4" style="margin-top: 14px;">
+        <div class="metric-card">
+          <div class="metric-value">Realtime</div>
+          <div class="metric-label">Giám sát vị trí đỗ đa điểm</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value">&lt;200 ms</div>
+          <div class="metric-label">Độ trễ đồng bộ Cloud kép</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value">Non-blocking</div>
+          <div class="metric-label">Kiến trúc phần mềm phi chặn</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value">Auto-Billing</div>
+          <div class="metric-label">Tự động nhận diện &amp; Trừ ví</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 2: TỔNG QUAN VẤN ĐỀ & MỤC TIÊU -->
+    <div class="slide" id="slide-2">
+      <div class="slide-tag">Tổng Quan Đề Tài</div>
+      <h2 class="slide-title">Mục Tiêu &amp; Định Hướng Kỹ Thuật Của Hệ Thống</h2>
+      <p class="slide-desc">Tự động hóa hoàn toàn quy trình kiểm soát bãi đỗ xe, giải phóng sức lao động và nâng cao độ an toàn vận hành.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 class="card-title" style="color: #60a5fa;">Mục Tiêu Kỹ Thuật Đặt Ra</h3>
+          <ul style="color: var(--text-muted); font-size: 1.05rem; line-height: 1.85; margin-left: 22px;">
+            <li>Giám sát tự động: Phát hiện tức thì trạng thái có xe hoặc trống tại từng vị trí đỗ, tính toán số chỗ trống phục vụ tài xế.</li>
+            <li>Điều khiển barrier an toàn: Đóng mở cổng tự động bằng động cơ servo góc quay 90 độ, tích hợp thuật toán an toàn chống đè nóc xe.</li>
+            <li>Hỗ trợ lùi chuồng: Đo khoảng cách thời gian thực bằng cảm biến siêu âm và phát tín hiệu cảnh báo va chạm khi xe lùi sát tường.</li>
+            <li>Thu phí tự động không chạm: Nhận diện biển số qua AI Camera OCR và trừ tiền ví điện tử không cần dừng xe quẹt thẻ.</li>
+          </ul>
+        </div>
+
+        <div class="card highlight">
+          <h3 class="card-title" style="color: #34d399;">Khả Năng Mở Rộng &amp; Thực Nghiệm</h3>
+          <ul style="color: var(--text-muted); font-size: 1.05rem; line-height: 1.85; margin-left: 22px;">
+            <li>Khả năng mở rộng linh hoạt: Kiến trúc phân tán cho phép nhân rộng số lượng vị trí đỗ xe và cổng kiểm soát theo cấu trúc mô-đun.</li>
+            <li>Dữ liệu đồng bộ trực tiếp: Toàn bộ trạng thái xuất phát từ cảm biến phần cứng hoặc bộ kịch bản kiểm thử, lưu trữ thực trên Cloud.</li>
+            <li>Đồng bộ hai chiều: Hỗ trợ lệnh điều khiển từ xa từ giao diện web tác động trực tiếp xuống cánh tay barrier phần cứng.</li>
+            <li>Hệ sinh thái tiện ích đi kèm: Cung cấp đầy đủ công cụ theo dõi nhật ký thời gian thực và kịch bản mô phỏng kiểm thử.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 3: KIẾN TRÚC HỆ THỐNG PHÂN TẦNG -->
+    <div class="slide" id="slide-3">
+      <div class="slide-tag">Kiến Trúc Kỹ Thuật</div>
+      <h2 class="slide-title">Kiến Trúc Hệ Thống 3 Tầng Đồng Bộ Hai Chiều</h2>
+      <p class="slide-desc">Mô hình phân tầng đảm bảo tính độc lập, khả năng mở rộng và độ ổn định cao trong truyền thông.</p>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="pill pill-green" style="margin-bottom: 10px;">1. TẦNG THIẾT BỊ (FIRMWARE NODE)</div>
+          <h3 class="card-title">Vi Điều Khiển ESP32</h3>
+          <p class="card-text">
+            • Cảm biến hồng ngoại ngõ ra digital giám sát các vị trí đỗ xe.<br>
+            • Cảm biến quang đặt trước cổng vào và cổng ra.<br>
+            • Động cơ servo SG90 điều khiển thanh chắn barrier 90 độ.<br>
+            • Cảm biến siêu âm HC-SR04 đo cự ly lùi chuồng an toàn.<br>
+            • Còi buzzer cảnh báo va chạm theo tần số biến thiên.<br>
+            • Màn hình OLED SSD1306 hiển thị trạng thái tại chỗ.
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="pill pill-cyan" style="margin-bottom: 10px;">2. TẦNG ĐÁM MÂY (BACKEND CLOUD)</div>
+          <h3 class="card-title">Firebase Realtime DB</h3>
+          <p class="card-text">
+            • Cơ sở dữ liệu phân tán NoSQL với cấu trúc cây JSON.<br>
+            • Node status: Cập nhật trạng thái các ô đỗ, cự ly và nhịp tim.<br>
+            • Node commands: Tiếp nhận và phân phối lệnh điều khiển barrier.<br>
+            • Node ocr: Xử lý sự kiện nhận diện biển số xe và thanh toán.<br>
+            • Kết hợp giao thức RESTful HTTPS và Server-Sent Events.
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="pill pill-purple" style="margin-bottom: 10px;">3. TẦNG ỨNG DỤNG (CLIENT &amp; AI)</div>
+          <h3 class="card-title">React 19 &amp; Camera OCR</h3>
+          <p class="card-text">
+            • Ứng dụng web SPA phục vụ cả người lái xe và chủ bãi xe.<br>
+            • Lắng nghe luồng dữ liệu thời gian thực hiển thị sơ đồ bãi đỗ.<br>
+            • Khối nhận diện biển số AI Camera OCR tự động.<br>
+            • Động cơ thu phí tự động, quản lý số dư ví điện tử và biên lai.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 4: CHUYÊN SÂU FIRMWARE - PHẦN 1 -->
+    <div class="slide" id="slide-4">
+      <div class="slide-tag">Chuyên Sâu Firmware (1/2)</div>
+      <h2 class="slide-title">Thuật Toán Đọc Cảm Biến, Barrier FSM &amp; Đo Cự Ly</h2>
+      <p class="slide-desc">Thiết kế mã nguồn nhúng xử lý chính xác tín hiệu ngoại vi và đảm bảo an toàn cơ học.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 class="card-title" style="color: #34d399;">1. Đọc Cảm Biến Vị Trí Đỗ &amp; Lọc Nhiễu Kép</h3>
+          <p class="card-text" style="margin-bottom: 10px;">
+            Cảm biến hồng ngoại trả về mức logic LOW khi phát hiện xe đỗ. Để loại bỏ xung nhiễu thoáng qua từ ánh sáng môi trường hoặc xe đang di chuyển ngang, hàm kiểm tra tích hợp trễ vi mô 200 micro giây để xác nhận trạng thái ổn định:
+          </p>
+          <div class="code-box">
+            if (digitalRead(PIN_SLOTS[i]) == LOW) {<br>
+            &nbsp;&nbsp;delayMicroseconds(200); // Lọc xung nhiễu thoáng qua<br>
+            &nbsp;&nbsp;return (digitalRead(PIN_SLOTS[i]) == LOW) ? 1 : 0;<br>
+            }
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title" style="color: #60a5fa;">2. Máy Trạng Thái Hữu Hạn (FSM) Barrier An Toàn</h3>
+          <p class="card-text" style="margin-bottom: 10px;">
+            Barrier được điều khiển bằng FSM gồm 3 trạng thái: BARRIER_CLOSED, BARRIER_OPENED, BARRIER_WAIT_CLEAR. Khi hết thời gian mở tối thiểu 4000ms, thuật toán bắt buộc đọc lại cảm biến cổng: nếu xe chưa đi qua hết, hệ thống tiếp tục giữ mở cánh tay để chống va đập vào xe:
+          </p>
+          <div class="code-box">
+            if (now - *openTick &gt;= 4000) {<br>
+            &nbsp;&nbsp;if (carDetected) *openTick = now; // Gia hạn mở an toàn<br>
+            &nbsp;&nbsp;else { servo.write(0); *state = BARRIER_WAIT_CLEAR; }<br>
+            }
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title" style="color: #fbbf24;">3. Đo Cự Ly Siêu Âm HC-SR04 Chính Xác</h3>
+          <p class="card-text">
+            Phát xung kích hoạt 10 micro giây vào chân TRIG, đo thời gian sóng phản hồi tại chân ECHO. Hàm đo thiết lập thời gian chờ tối đa (timeout) 25000 micro giây để bảo vệ CPU không bị treo khi sóng âm phát ra ngoài tầm phản xạ, quy đổi khoảng cách theo công thức d = duration / 58.0 (cm).
+          </p>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title" style="color: #c084fc;">4. Quy Hoạch Chân GPIO Tối Ưu</h3>
+          <p class="card-text">
+            Chân điều khiển servo cổng vào sử dụng GPIO 4, cổng ra sử dụng GPIO 13. Toàn bộ các ngõ vào cảm biến và ngõ ra chấp hành được phân bổ khoa học, tránh các chân nhạy cảm khi khởi động vi điều khiển.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 5: CHUYÊN SÂU FIRMWARE - PHẦN 2 -->
+    <div class="slide" id="slide-5">
+      <div class="slide-tag">Chuyên Sâu Firmware (2/2)</div>
+      <h2 class="slide-title">Kỹ Thuật Phi Chặn, Màn Hình OLED &amp; Module REST Client</h2>
+      <p class="slide-desc">Tối ưu hóa vòng lặp thực thi chính với thời gian đáp ứng cao và tự phục hồi kết nối.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 class="card-title" style="color: #38bdf8;">1. Còi Báo Động Phi Chặn Bằng Millis</h3>
+          <p class="card-text" style="margin-bottom: 8px;">
+            Hàm Buzzer_Update hoạt động hoàn toàn dựa trên bộ đếm thời gian millis(), loại bỏ mọi lệnh delay gây tắc nghẽn chu kỳ đọc cảm biến và đồng bộ mạng:
+          </p>
+          <ul style="color: var(--text-muted); font-size: 0.95rem; margin-left: 20px; line-height: 1.7;">
+            <li>Khoảng cách &gt; 30cm: Tắt còi hoàn toàn để giữ yên tĩnh.</li>
+            <li>Khoảng cách 10cm - 30cm: Còi kêu ngắt quãng với tần số thay đổi tỉ lệ nghịch với khoảng cách (càng lùi gần còi kêu càng dồn dập).</li>
+            <li>Khoảng cách &le; 10cm: Còi phát âm thanh liên tục cảnh báo dừng khẩn cấp.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title" style="color: #34d399;">2. Giao Diện OLED SSD1306 Trực Quan</h3>
+          <p class="card-text" style="margin-bottom: 8px;">
+            Màn hình đồ họa giao tiếp qua bus I2C (GPIO 21, 22) cập nhật thông tin trực tiếp cho nhân viên vận hành:
+          </p>
+          <ul style="color: var(--text-muted); font-size: 0.95rem; margin-left: 20px; line-height: 1.7;">
+            <li>Vẽ sơ đồ hình học các vị trí đỗ: Ô có xe hiển thị khung tô đậm, ô trống hiển thị khung viền rỗng.</li>
+            <li>Đếm số lượng vị trí đỗ còn trống theo thời gian thực.</li>
+            <li>Thanh đo cự ly lùi xe siêu âm hiển thị chi tiết theo đơn vị cm.</li>
+            <li>Cơ chế kiểm tra bus I2C giúp hệ thống duy trì hoạt động ngay cả khi màn hình gặp sự cố ngắt kết nối vật lý.</li>
+          </ul>
+        </div>
+
+        <div class="card" style="grid-column: span 2;">
+          <h3 class="card-title" style="color: #fbbf24;">3. Khối Truyền Thông RESTful HTTPS Lên Firebase</h3>
+          <p class="card-text">
+            Sử dụng thư viện HTTPClient và ArduinoJson đóng gói dữ liệu trạng thái thành chuỗi JSON chuẩn và gửi qua phương thức PUT lên node status.json (chu kỳ định thời 800ms). Đồng thời thực hiện truy vấn GET tại commands.json để tiếp nhận lệnh mở barrier từ xa gửi xuống từ Web. Hệ thống tích hợp khối kiểm tra trạng thái WiFi tự động kết nối lại khi tín hiệu mạng gián đoạn.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 6: CHUYÊN SÂU BACKEND - PHẦN 1 -->
+    <div class="slide" id="slide-6">
+      <div class="slide-tag">Chuyên Sâu Backend (1/3)</div>
+      <h2 class="slide-title">Mô Hình Dữ Liệu NoSQL &amp; Giao Thức Đồng Bộ Kép</h2>
+      <p class="slide-desc">Kiến trúc cơ sở dữ liệu phân cấp thời gian thực trên nền tảng Firebase Realtime Database.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 class="card-title" style="color: #60a5fa;">1. Cấu Trúc Cây Dữ Liệu JSON Phân Cấp</h3>
+          <div class="code-box" style="font-size: 0.86rem;">
+            /parking/lots/{lot_id}<br>
+            ├── status<br>
+            │   ├── totalSlots: số lượng vị trí đỗ tổng cộng<br>
+            │   ├── freeSlots: số lượng vị trí đỗ còn trống<br>
+            │   ├── distance: khoảng cách siêu âm (cm)<br>
+            │   ├── lastHeartbeat: mốc thời gian nhịp tim (ms)<br>
+            │   ├── slots: { "1": boolean, "2": boolean, ... }<br>
+            │   └── gates: { "in": "closed"|"open", "out": "closed"|"open" }<br>
+            ├── commands<br>
+            │   ├── gateIn: "idle" | "open"<br>
+            │   └── gateOut: "idle" | "open"<br>
+            └── ocr<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;├── plate: biển số xe nhận diện (chuỗi)<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;├── direction: hướng di chuyển ("in" | "out")<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;├── fee: số tiền cước đỗ xe (VNĐ)<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;└── timestamp: mốc thời gian sự kiện (epoch ms)
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title" style="color: #34d399;">2. Giao Thức Đồng Bộ Thời Gian Thực Kép</h3>
+          <p class="card-text" style="margin-bottom: 12px;">
+            Backend giải quyết bài toán cân bằng giữa tài nguyên nhúng giới hạn và trải nghiệm người dùng tức thì:
+          </p>
+          <ul style="color: var(--text-muted); font-size: 0.98rem; line-height: 1.8; margin-left: 20px;">
+            <li>RESTful API cho thiết bị nhúng: Giao thức HTTP request-response ngắn gọn, giải phóng bộ nhớ RAM cho ESP32 sau mỗi phiên giao tiếp, hoạt động ổn định qua mạng WiFi không dây.</li>
+            <li>Server-Sent Events (SSE) cho Web Client: Thiết lập kết nối luồng dữ liệu stream liên tục một chiều từ Firebase xuống trình duyệt qua một kết nối HTTP duy nhất. Giảm thiểu 95% lượng gói tin thăm dò so với kỹ thuật polling truyền thống, đưa độ trễ cập nhật trạng thái xuống dưới 200ms.</li>
+            <li>Tính phân tán toàn cầu: Lưu trữ trên cụm máy chủ khu vực Đông Nam Á (Singapore asia-southeast1), đảm bảo tốc độ truyền dẫn tối ưu và tính sẵn sàng cao.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 7: CHUYÊN SÂU BACKEND - PHẦN 2 -->
+    <div class="slide" id="slide-7">
+      <div class="slide-tag">Chuyên Sâu Backend (2/3)</div>
+      <h2 class="slide-title">Cơ Chế Liveness Heartbeat &amp; Chuẩn Hóa Dữ Liệu</h2>
+      <p class="slide-desc">Đảm bảo tính toàn vẹn dữ liệu, giải quyết xung đột cấu trúc và giám sát sức khỏe trạm IoT.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 class="card-title" style="color: #38bdf8;">1. Cơ Chế Giám Sát Nhịp Tim (Liveness Heartbeat)</h3>
+          <p class="card-text" style="margin-bottom: 10px;">
+            Mỗi khi vi điều khiển hoặc kịch bản điều khiển cập nhật trạng thái, mốc thời gian lastHeartbeat (dạng epoch millisecond) sẽ được ghi nhận lên Cloud:
+          </p>
+          <ul style="color: var(--text-muted); font-size: 0.98rem; line-height: 1.8; margin-left: 20px;">
+            <li>Phát hiện mất kết nối: Giao diện quản trị liên tục kiểm tra chênh lệch thời gian hiện tại và mốc nhịp tim gần nhất; nếu vượt quá ngưỡng quy định (ví dụ 10 giây), hệ thống sẽ hiển thị cảnh báo trạm IoT mất tín hiệu.</li>
+            <li>Tự động phục hồi: Khi trạm phần cứng kết nối lại, luồng dữ liệu nhịp tim tiếp tục cập nhật và đưa giao diện trở lại trạng thái trực tuyến mà không cần can thiệp thủ công.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title" style="color: #fbbf24;">2. Giải Quyết Ép Kiểu Dữ Liệu Tự Động (Array Coercion)</h3>
+          <p class="card-text" style="margin-bottom: 10px;">
+            Firebase Realtime Database có cơ chế tự động ép kiểu các đối tượng có khóa là chuỗi số nguyên liên tiếp thành mảng JSON. Hiện tượng này dễ gây lỗi truy xuất khi đọc từ các ngôn ngữ khác nhau:
+          </p>
+          <ul style="color: var(--text-muted); font-size: 0.98rem; line-height: 1.8; margin-left: 20px;">
+            <li>Cơ chế chuẩn hóa dữ liệu: Xây dựng hàm chuẩn hóa extract_slots trên cả Python script và TypeScript frontend để đồng nhất mọi định dạng mảng hoặc đối tượng thành cấu trúc từ điển logic an toàn.</li>
+            <li>Ngăn chặn lỗi runtime: Đảm bảo việc truy vấn trạng thái vị trí đỗ luôn trả về kiểu dữ liệu boolean chính xác, không bị phụ thuộc vào việc Firebase trả về danh sách có phần tử null hay đối tượng thuần túy.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 8: CHUYÊN SÂU BACKEND - PHẦN 3 -->
+    <div class="slide" id="slide-8">
+      <div class="slide-tag">Chuyên Sâu Backend (3/3)</div>
+      <h2 class="slide-title">Động Cơ AI OCR &amp; Động Cơ Thu Phí Tự Động (Auto-Billing)</h2>
+      <p class="slide-desc">Xử lý nghiệp vụ đối soát biển số xe, tính cước theo thời gian thực và khấu trừ số dư ví điện tử.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 class="card-title" style="color: #38bdf8;">1. Luồng Nghiệp Vụ Xe VÀO Bãi (Check-in)</h3>
+          <ol style="color: var(--text-muted); font-size: 0.98rem; line-height: 1.85; margin-left: 22px;">
+            <li>Camera OCR nhận diện biển số xe khi đến cổng và đẩy dữ liệu lên node /ocr với hướng di chuyển "in".</li>
+            <li>Hệ thống gửi lệnh mở barrier cổng vào (commands/gateIn = "open").</li>
+            <li>Đối soát biển số với danh mục phương tiện đã đăng ký trong cơ sở dữ liệu người dùng.</li>
+            <li>Khởi tạo phiên đỗ xe: gán cờ isParking = true, ghi nhận mốc thời gian bắt đầu và kích hoạt đồng hồ đếm giờ trên ứng dụng tài xế.</li>
+          </ol>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title" style="color: #34d399;">2. Luồng Thu Phí &amp; Khấu Trừ Ví Xe RA (Check-out)</h3>
+          <ol style="color: var(--text-muted); font-size: 0.98rem; line-height: 1.85; margin-left: 22px;">
+            <li>Camera OCR quét biển số khi xe rời cổng và đẩy dữ liệu lên node /ocr với hướng di chuyển "out" kèm định mức cước phí.</li>
+            <li>Gửi lệnh mở barrier cổng ra (commands/gateOut = "open") giải phóng xe.</li>
+            <li>Động cơ thu phí tự động: Xác định tài khoản sở hữu xe, kiểm tra số dư ví điện tử và thực hiện giao dịch trừ tiền.</li>
+            <li>Sinh mã giao dịch duy nhất, cập nhật số dư mới và lưu vào lịch sử giao dịch không thể đảo ngược.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="card highlight" style="margin-top: 16px; padding: 14px 22px;">
+        <p style="font-size: 0.98rem; color: #a7f3d0;">
+          An toàn giao dịch tài chính: Hệ thống kiểm tra điều kiện số dư khả dụng trước khi trừ tiền, áp dụng cơ chế xác thực chống lặp giao dịch (idempotency key dựa trên biển số xe và mốc thời gian) nhằm đảm bảo tính toàn vẹn số dư ví của người dùng.
+        </p>
+      </div>
+    </div>
+
+    <!-- SLIDE 9: HỆ THỐNG KỊCH BẢN TỰ ĐỘNG HÓA & MÔ PHỎNG -->
+    <div class="slide" id="slide-9">
+      <div class="slide-tag">Bộ Kịch Bản Script (1/2)</div>
+      <h2 class="slide-title">Hệ Thống Bảng Điều Khiển Kiểm Thử Qua Script Python</h2>
+      <p class="slide-desc">Kịch bản demo_controller.py và dieu_khien_xe.bat phục vụ kiểm thử end-to-end độc lập với phần cứng.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 class="card-title" style="color: #38bdf8;">1. Kiến Trúc Kịch Bản Điều Khiển Trung Tâm</h3>
+          <p class="card-text" style="margin-bottom: 10px;">
+            Xây dựng trên nền tảng Python 3, sử dụng thư viện requests tương tác trực tiếp với API Firebase qua giao thức RESTful HTTPS:
+          </p>
+          <ul style="color: var(--text-muted); font-size: 0.96rem; line-height: 1.75; margin-left: 20px;">
+            <li>Hàm trigger_ocr(): Mô phỏng camera AI đọc biển số, cập nhật vị trí đỗ tương ứng, kích hoạt mở barrier cổng và đẩy sự kiện lên Cloud.</li>
+            <li>Hàm toggle_slot(): Mô phỏng cảm biến hồng ngoại phát hiện xe vào hoặc rời ô đỗ, tự động tính toán lại tổng số chỗ trống và nhịp tim.</li>
+            <li>Hàm set_distance(): Thay đổi cự ly lùi siêu âm, kiểm tra ngưỡng kích hoạt còi báo động từ xa.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title" style="color: #34d399;">2. Giao Diện Dòng Lệnh Terminal Tương Tác</h3>
+          <div class="code-box" style="font-size: 0.85rem;">
+            [v1] Xe 1 VÀO: 30A-123.45 (VinFast VF8) &rarr; Đỗ ô 1, Mở cổng vào<br>
+            [r1] Xe 1 RA:  30A-123.45 &rarr; Mở cổng ra, Trừ 15.000đ ví An<br>
+            [v2/r2] Xe 2 VÀO / RA: 51G-456.78 (Honda CR-V) &rarr; Trừ 20.000đ ví Bình<br>
+            [v3/r3] Xe 3 VÀO / RA: 30H-888.66 (Toyota Cross) &rarr; Trừ 15.000đ ví Anh<br>
+            [ocr]  Quét biển số tùy chọn: Cho phép nhập bất kỳ biển số xe nào<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;vừa đăng ký mới trên Web để kiểm tra tính năng nhận diện tức thì<br>
+            [1-4]  Bấm phím số để mô phỏng xe đỗ vào hoặc rời đi từng ô<br>
+            [in/out] Gửi lệnh mở barrier cổng vào hoặc cổng ra trực tiếp<br>
+            [d1-d3] Thay đổi cự ly siêu âm: Xa (45cm), Vừa (18cm), Sát tường (7cm)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 10: HỆ THỐNG GIÁM SÁT NHẬT KÝ & TIỆN ÍCH HỆ THỐNG -->
+    <div class="slide" id="slide-10">
+      <div class="slide-tag">Bộ Kịch Bản Script (2/2)</div>
+      <h2 class="slide-title">Hệ Thống Giám Sát Nhật Ký Live Log &amp; Nạp Firmware</h2>
+      <p class="slide-desc">Bộ công cụ hoàn chỉnh phục vụ theo dõi luồng sự kiện thời gian thực và quản lý vòng đời firmware.</p>
+
+      <div class="grid-3">
+        <div class="card">
+          <h3 class="card-title" style="color: #34d399;">Live Log Firebase</h3>
+          <div class="pill pill-green" style="margin-bottom: 8px;">xem_log_firebase.bat</div>
+          <p class="card-text">
+            Chạy script log_viewer.py áp dụng thuật toán so sánh sai khác trạng thái (state diffing). Bất kỳ thao tác nào từ Web, ESP32 hay kịch bản kiểm thử đều được in ra màn hình terminal có mốc thời gian thực, phân loại sự kiện ô đỗ, barrier, cự ly siêu âm và trừ tiền OCR.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title" style="color: #60a5fa;">Serial Monitor ESP32</h3>
+          <div class="pill pill-blue" style="margin-bottom: 8px;">xem_log_esp32.bat</div>
+          <p class="card-text">
+            Kết nối cổng truyền thông UART của vi điều khiển ở tốc độ 115200 baud thông qua công cụ PlatformIO Device Monitor. Cho phép theo dõi trực tiếp quá trình kết nối WiFi, địa chỉ IP nhận được, trạng thái phản hồi HTTP và giá trị thô từ các chân GPIO phần cứng.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title" style="color: #fbbf24;">Nạp Code &amp; Khởi Động</h3>
+          <div class="pill pill-amber" style="margin-bottom: 8px;">upload_firmware.bat</div>
+          <p class="card-text">
+            Tự động phát hiện môi trường PlatformIO trong hệ điều hành Windows để biên dịch mã nguồn C++ và nạp thẳng file nhị phân vào chip ESP32 qua cáp USB. Kèm theo start_demo.bat giúp khởi động trọn gói web server và tự mở trình duyệt chỉ với 1 cú click chuột.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 11: ỨNG DỤNG WEB, TÀI KHOẢN & TỔNG KẾT KỸ THUẬT -->
+    <div class="slide" id="slide-11">
+      <div class="slide-tag">Giao Diện &amp; Tổng Kết</div>
+      <h2 class="slide-title">Ứng Dụng Web Client, Dữ Liệu Thử Nghiệm &amp; Đánh Giá</h2>
+      <p class="slide-desc">Kiểm thử tích hợp hệ thống với các tài khoản người dùng độc lập và đánh giá hiệu năng đạt được.</p>
+
+      <table class="styled-table" style="margin-bottom: 16px;">
+        <thead>
+          <tr>
+            <th>Họ và Tên</th>
+            <th>Tên Đăng Nhập / SĐT</th>
+            <th>Mật Khẩu</th>
+            <th>Vai Trò</th>
+            <th>Số Dư Ví Ban Đầu</th>
+            <th>Phương Tiện Sở Hữu</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Nguyễn Văn An</td>
+            <td>0912345678</td>
+            <td>123456</td>
+            <td>Tài xế</td>
+            <td style="color: #34d399;">350.000 VNĐ</td>
+            <td>VinFast VF8 (30A-123.45) &amp; Honda SH 150i</td>
+          </tr>
+          <tr>
+            <td>Trần Thị Bình</td>
+            <td>0987654321</td>
+            <td>123456</td>
+            <td>Tài xế</td>
+            <td style="color: #34d399;">500.000 VNĐ</td>
+            <td>Honda CR-V (51G-456.78) &amp; Yamaha Grande</td>
+          </tr>
+          <tr>
+            <td>Phạm Tuấn Anh</td>
+            <td>0933445566</td>
+            <td>123456</td>
+            <td>Tài xế</td>
+            <td style="color: #34d399;">200.000 VNĐ</td>
+            <td>Toyota Corolla Cross (30H-888.66)</td>
+          </tr>
+          <tr>
+            <td>Lê Hoàng Nam</td>
+            <td>0909999999</td>
+            <td>123456</td>
+            <td>Chủ bãi</td>
+            <td style="color: #c084fc;">1.500.000 VNĐ</td>
+            <td>Quản lý bãi đỗ xe thông minh B7 Mỹ Đình</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="grid-4" style="margin-bottom: 16px;">
+        <div class="metric-card">
+          <div class="metric-value">14.6%</div>
+          <div class="metric-label">Sử dụng RAM vi điều khiển</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value">74.0%</div>
+          <div class="metric-label">Sử dụng Flash PlatformIO</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value">328 ms</div>
+          <div class="metric-label">Tốc độ đóng gói Vite Client</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value">&lt;200 ms</div>
+          <div class="metric-label">Độ trễ truyền nhận Cloud SSE</div>
+        </div>
+      </div>
+
+      <div class="card highlight" style="text-align: center; padding: 20px;">
+        <h3 style="font-size: 1.35rem; color: #fff; margin-bottom: 8px;">
+          KẾT LUẬN VÀ ĐÁNH GIÁ CHUNG ĐỀ TÀI
+        </h3>
+        <p style="color: var(--text-muted); font-size: 1.02rem; max-width: 900px; margin: 0 auto; line-height: 1.75;">
+          Hệ thống đáp ứng trọn vẹn các yêu cầu kỹ thuật: Phần mềm nhúng vận hành chính xác và an toàn, cơ sở dữ liệu đám mây đồng bộ thời gian thực hai chiều với độ trễ thấp, động cơ AI OCR nhận diện biển số và trừ tiền ví tự động hoạt động tin cậy, kèm theo bộ kịch bản kiểm thử và giám sát nhật ký toàn diện. Đề tài sẵn sàng cho công tác nghiệm thu và báo cáo đánh giá.
+        </p>
+      </div>
+    </div>
+
+  <!-- Speaker Notes Modal Drawer -->
+  <div id="notesDrawer" style="display: none; position: fixed; bottom: 74px; right: 36px; width: 560px; max-width: 92vw; max-height: 72vh; background: rgba(9, 14, 26, 0.97); border: 2px solid #10b981; border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,0.85); backdrop-filter: blur(24px); z-index: 999; padding: 22px; overflow-y: auto;">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.18); padding-bottom: 10px; margin-bottom: 14px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.3rem;">🎙️</span>
+        <span style="font-weight: bold; color: #34d399; font-size: 1.15rem;">KỊCH BẢN NÓI - SLIDE <span id="drawerSlideNum">01</span></span>
+      </div>
+      <button id="closeNotesBtn" style="background: none; border: none; color: #cbd5e1; font-size: 1.3rem; cursor: pointer;">✕</button>
+    </div>
+    <div id="drawerContent" style="font-size: 1.05rem; line-height: 1.85; color: #f8fafc;"></div>
+  </div>
+
+  <footer>
+    <div class="keyboard-hints">
+      <span>Điều khiển:</span>
+      <span class="kbd">&larr;</span>
+      <span class="kbd">&rarr;</span>
+      <span>hoặc</span>
+      <span class="kbd">Space</span>
+      <span>|</span>
+      <span>Kịch bản nói:</span>
+      <span class="kbd">S</span>
+      <span>|</span>
+      <span>Toàn màn hình:</span>
+      <span class="kbd">F</span>
+      <span>|</span>
+      <span>Nhảy slide:</span>
+      <span class="kbd">1 - 9, 0, -</span>
+    </div>
+
+    <div class="dots-container" id="dotsContainer"></div>
+
+    <div class="nav-buttons">
+      <button class="btn-nav btn-nav-prev" id="prevBtn">&larr; Trang trước</button>
+      <button class="btn-nav" id="nextBtn">Trang tiếp &rarr;</button>
+    </div>
+  </footer>
+
+  <script>
+    const slides = document.querySelectorAll('.slide');
+    const totalSlides = slides.length;
+    let currentSlide = 0;
+
+    const currentSlideNumEl = document.getElementById('currentSlideNum');
+    const totalSlideNumEl = document.getElementById('totalSlideNum');
+    const progressBar = document.getElementById('progressBar');
+    const dotsContainer = document.getElementById('dotsContainer');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+    // Các phần tử Kịch bản nói (Speaker Notes)
+    const notesDrawer = document.getElementById('notesDrawer');
+    const notesToggleBtn = document.getElementById('notesToggleBtn');
+    const closeNotesBtn = document.getElementById('closeNotesBtn');
+    const drawerSlideNum = document.getElementById('drawerSlideNum');
+    const drawerContent = document.getElementById('drawerContent');
+
+    const SPEAKER_NOTES = [
+      // Slide 1
+      `<strong>Lời thoại mở đầu:</strong><br>"Kính thưa quý thầy cô trong Hội đồng giám khảo và các bạn! Em xin đại diện nhóm báo cáo đề tài: <em>'Hệ thống quản lý bãi đỗ xe thông minh - Smart Parking System'</em>, phát triển trong chương trình SIC IoT. Đề tài kết hợp hoàn chỉnh giữa vi điều khiển nhúng ESP32, đám mây Firebase Realtime NoSQL, AI Camera OCR và ứng dụng web React 19. Hệ thống chạy 100% dữ liệu thực tế, độ trễ dưới 200ms, hỗ trợ thanh toán trừ tiền ví tự động không chạm."`,
+
+      // Slide 2
+      `<strong>Lời thoại tổng quan:</strong><br>"Thực trạng bãi đỗ xe truyền thống dùng vé giấy hay quẹt thẻ từ thường gây ùn tắc giờ cao điểm, nguy cơ thất thoát tài chính và rủi ro va quẹt khi lùi xe. Nhóm đặt ra 4 mục tiêu kỹ thuật: Giám sát tự động từng vị trí đỗ; Điều khiển barrier an toàn chống đè nóc xe; Hỗ trợ lùi chuồng đo cự ly siêu âm kèm còi cảnh báo; Tự động nhận diện biển số qua AI OCR và trừ tiền ví điện tử không dừng. Kiến trúc cho phép mở rộng quy mô linh hoạt theo mô-đun."`,
+
+      // Slide 3
+      `<strong>Lời thoại kiến trúc:</strong><br>"Hệ thống xây dựng theo kiến trúc phân tầng 3 lớp: Tầng Thiết bị nhúng dùng ESP32 thu thập tín hiệu cảm biến hồng ngoại, cảm biến siêu âm, điều khiển 2 servo barrier, còi báo và OLED; Tầng Đám mây Firebase Realtime NoSQL tại Singapore làm trung tâm điều phối dữ liệu qua các node status, commands, ocr; Tầng Ứng dụng Web Client React 19 tích hợp khối AI OCR. Ba tầng giao tiếp đồng bộ hai chiều khép kín trong tích tắc."`,
+
+      // Slide 4
+      `<strong>Lời thoại Firmware 1:</strong><br>"Về kỹ thuật Firmware nhúng: Cảm biến hồng ngoại ngõ ra digital được lọc nhiễu xác nhận kép với trễ vi mô 200 micro giây; Máy trạng thái hữu hạn (FSM) điều khiển barrier 3 pha an toàn: sau 4 giây mở, nếu xe vẫn đứng chắn cảm biến, cánh tay giữ nguyên vị trí mở để chống va đập vào xe; Cảm biến siêu âm HC-SR04 định thời xung 10 micro giây và timeout 25.000 micro giây chống treo CPU; Các chân PWM của Servo được quy hoạch vào GPIO 4 và GPIO 13 an toàn."`,
+
+      // Slide 5
+      `<strong>Lời thoại Firmware 2:</strong><br>"Firmware áp dụng kỹ thuật phi chặn hoàn toàn: Còi Buzzer dùng máy trạng thái đếm thời gian millis(), tần số kêu dồn dập khi xe lùi càng gần và kêu liên tục khi dưới 10cm; Màn hình OLED SSD1306 vẽ sơ đồ bãi đỗ, đếm chỗ trống và đo cự ly lùi trực tiếp tại cổng; Khối REST Client dùng HTTPClient và ArduinoJson v7 định kỳ đẩy dữ liệu lên status.json chu kỳ 800ms và nhận lệnh mở cổng từ commands.json, có cơ chế WiFi tự động kết nối lại."`,
+
+      // Slide 6
+      `<strong>Lời thoại Backend 1:</strong><br>"Backend tổ chức cơ sở dữ liệu phân cấp NoSQL trên Firebase Realtime DB thành 3 nhánh chức năng: status (vị trí đỗ, cự ly, nhịp tim), commands (lệnh mở barrier từ xa), ocr (biển số và thanh toán). Backend kết hợp giao thức kép: RESTful API ngắn gọn tiết kiệm RAM cho ESP32, và Server-Sent Events (SSE) stream dữ liệu liên tục cho Web Client, giảm 95% băng thông so với polling và đạt độ trễ dưới 200ms."`,
+
+      // Slide 7
+      `<strong>Lời thoại Backend 2:</strong><br>"Backend tích hợp 2 cơ chế đảm bảo vận hành: Giám sát nhịp tim (Liveness Heartbeat) lưu mốc epoch millisecond, Web liên tục đối soát và cảnh báo Offline nếu quá 10 giây mất tín hiệu, tự chuyển Online khi có mạng; Giải quyết hiện tượng Firebase tự ép kiểu object có key số thành mảng JSON bằng hàm chuẩn hóa extract_slots trên cả Python và TypeScript, đảm bảo dữ liệu boolean luôn chính xác."`,
+
+      // Slide 8
+      `<strong>Lời thoại Backend 3:</strong><br>"Động cơ AI OCR và Thu phí tự động Auto-Billing: Khi xe vào cổng (check-in), OCR ghi node /ocr với hướng in, hệ thống mở cổng vào, đối soát phương tiện và bật phiên đỗ xe isParking; Khi xe ra cổng (check-out), OCR ghi hướng out kèm cước phí, mở cổng ra, tự động đối soát tài khoản sở hữu xe, kiểm tra số dư ví ParkIQ, trừ tiền và ghi nhận biên lai duy nhất. Có khóa chống lặp giao dịch và bảo vệ số dư khả dụng."`,
+
+      // Slide 9
+      `<strong>Lời thoại Scripts 1:</strong><br>"Bộ kịch bản tự động hóa trong thư mục scripts giúp kiểm thử end-to-end độc lập phần cứng: Kịch bản Python demo_controller.py chạy qua dieu_khien_xe.bat giao tiếp REST với Firebase, gồm các hàm trigger_ocr, toggle_slot, set_distance. Bảng điều khiển có phím tắt nhanh: v1/r1 cho xe VinFast VF8, v2/r2 cho Honda CR-V, v3/r3 cho Toyota Cross; và lệnh ocr cho phép nhập bất kỳ biển số xe nào vừa đăng ký mới trên Web."`,
+
+      // Slide 10
+      `<strong>Lời thoại Scripts 2:</strong><br>"Hệ thống giám sát và tiện ích nhúng: xem_log_firebase.bat chạy log_viewer.py áp dụng thuật toán so sánh sai khác trạng thái (state diffing) in ra từng dòng log sự kiện ô đỗ, barrier, siêu âm, trừ tiền thời gian thực; xem_log_esp32.bat đọc nhật ký debug UART 115200 baud từ chip ESP32; upload_firmware.bat tự động nhận diện PlatformIO Core nạp code vào ESP32 chỉ với 1 cú click chuột."`,
+
+      // Slide 11
+      `<strong>Lời thoại kết luận:</strong><br>"Hệ thống cung cấp sẵn 4 tài khoản thử nghiệm độc lập: Nguyễn Văn An, Trần Thị Bình, Phạm Tuấn Anh và chủ bãi Lê Hoàng Nam. Về thông số kỹ thuật: RAM ESP32 chỉ chiếm 14.6%, Flash 74%, Web đóng gói trong 328ms, độ trễ Cloud dưới 200ms. Đề tài đã giải quyết trọn vẹn và an toàn bài toán bãi đỗ xe thông minh. Em xin chân thành cảm ơn quý thầy cô đã lắng nghe và rất mong nhận được câu hỏi góp ý từ Hội đồng ạ!"`
+    ];
+
+    totalSlideNumEl.textContent = totalSlides < 10 ? '0' + totalSlides : totalSlides;
+
+    slides.forEach((_, idx) => {
+      const dot = document.createElement('div');
+      dot.classList.add('dot');
+      if (idx === 0) dot.classList.add('active');
+      dot.addEventListener('click', () => goToSlide(idx));
+      dotsContainer.appendChild(dot);
+    });
+
+    const dots = document.querySelectorAll('.dot');
+
+    function updateSlide() {
+      slides.forEach((s, idx) => {
+        s.classList.toggle('active', idx === currentSlide);
+      });
+
+      dots.forEach((d, idx) => {
+        d.classList.toggle('active', idx === currentSlide);
+      });
+
+      const slideNumberStr = currentSlide + 1 < 10 ? '0' + (currentSlide + 1) : (currentSlide + 1);
+      currentSlideNumEl.textContent = slideNumberStr;
+      if (drawerSlideNum) drawerSlideNum.textContent = slideNumberStr;
+      if (drawerContent && SPEAKER_NOTES[currentSlide]) {
+        drawerContent.innerHTML = SPEAKER_NOTES[currentSlide];
+      }
+
+      const progressPercent = ((currentSlide + 1) / totalSlides) * 100;
+      progressBar.style.width = progressPercent + '%';
+
+      prevBtn.style.opacity = currentSlide === 0 ? '0.4' : '1';
+      prevBtn.style.pointerEvents = currentSlide === 0 ? 'none' : 'auto';
+      nextBtn.textContent = currentSlide === totalSlides - 1 ? 'Hoàn thành ✓' : 'Trang tiếp →';
+    }
+
+    function toggleNotes() {
+      if (notesDrawer.style.display === 'none' || !notesDrawer.style.display) {
+        notesDrawer.style.display = 'block';
+      } else {
+        notesDrawer.style.display = 'none';
+      }
+    }
+
+    if (notesToggleBtn) notesToggleBtn.addEventListener('click', toggleNotes);
+    if (closeNotesBtn) closeNotesBtn.addEventListener('click', () => { notesDrawer.style.display = 'none'; });
+
+    function goToSlide(idx) {
+      if (idx >= 0 && idx < totalSlides) {
+        currentSlide = idx;
+        updateSlide();
+      }
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides - 1) {
+        currentSlide++;
+        updateSlide();
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 0) {
+        currentSlide--;
+        updateSlide();
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        e.preventDefault();
+        nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        prevSlide();
+      } else if (e.key === 's' || e.key === 'S') {
+        toggleNotes();
+      } else if (e.key === 'f' || e.key === 'F') {
+        toggleFullScreen();
+      } else if (e.key >= '1' && e.key <= '9') {
+        goToSlide(parseInt(e.key) - 1);
+      } else if (e.key === '0') {
+        goToSlide(9);
+      } else if (e.key === '-' || e.key === '_') {
+        goToSlide(10);
+      }
+    });
+
+    prevBtn.addEventListener('click', prevSlide);
+    nextBtn.addEventListener('click', nextSlide);
+
+    function toggleFullScreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
+    }
+
+    fullscreenBtn.addEventListener('click', toggleFullScreen);
+
+    updateSlide();
+  </script>
+</body>
+</html>
