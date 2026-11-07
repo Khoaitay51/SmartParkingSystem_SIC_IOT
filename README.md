@@ -1,261 +1,121 @@
-# 🚗 HỆ THỐNG BÃI ĐỖ XE THÔNG MINH (SMART PARKING SYSTEM)
-### Dự án SIC IoT — Tích hợp Phần cứng ESP32, Nhận diện Biển số AI OCR, Firebase Realtime Database & React Web App
+# Hệ thống quản lý bãi đỗ xe thông minh
 
-Hệ thống quản lý bãi đỗ xe thông minh hai chiều thời gian thực (Realtime Two-Way Sync):
-- **Bãi đỗ xe thực tế:** **B7 Mỹ Đình** (`lot_mydinh`), quy mô mô hình 4 ô đỗ tiêu chuẩn.
-- **Giám sát ô đỗ tự động:** 4 cảm biến hồng ngoại (IR) phát hiện xe đỗ và tính toán số chỗ trống tức thì.
-- **Nhận diện biển số xe AI Camera OCR:** Đăng ký biển số phương tiện trên Web, hệ thống tự động quét biển số khi xe đến, mở barrier cổng vào, tính toán thời gian đỗ và tự động trừ tiền ví tài xế khi xe rời bãi.
-- **Barrier thông minh chống chém xe:** Tự động mở khi xe đến cổng (hoặc mở từ xa qua Web), tự động đóng sau khi xe đi qua an toàn và **tuyệt đối không hạ cánh tay khi có xe dừng dưới cổng**.
-- **Hỗ trợ lùi chuồng an toàn:** Cảm biến siêu âm HC-SR04 đo khoảng cách xe và còi Buzzer phi chặn (non-blocking) phát âm thanh cảnh báo khi đỗ quá sát tường ($\le 10cm$).
-- **Màn hình OLED tại chỗ:** Hiển thị trực tiếp số chỗ trống, sơ đồ 4 ô đỗ và khoảng cách xe lùi.
-- **Đồng bộ Đám mây 100%:** Dữ liệu chạy qua **Firebase Realtime Database**, cập nhật trực tiếp lên ứng dụng Web/Mobile.
+Hai bãi thật cùng mạng LAN, dùng chung một broker MQTT và một backend. Mỗi bãi có một ESP32 Park Node và một `lot_id` riêng. Park Node đọc cảm biến siêu âm tại ô đỗ, dùng cảm biến IR để điều khiển servo tại cổng và gửi trạng thái qua MQTT.
 
----
-
-## 👥 TÀI KHOẢN MẪU ĐỂ TEST & TRẢI NGHIỆM (PRESET TEST ACCOUNTS)
-
-Hệ thống đã tích hợp sẵn 4 tài khoản thử nghiệm với mật khẩu dùng chung là **`123456`**. Trên trang Đăng nhập Web có sẵn các nút bấm 1-click để đăng nhập nhanh tức thì:
-
-| STT | Họ và Tên | Tên đăng nhập / SĐT | Mật khẩu | Vai trò | Số dư ví ban đầu | Biển số xe mặc định | Phương tiện sở hữu |
-| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **1** | **Nguyễn Văn An** | **`0912345678`** | **`123456`** | **Tài xế** | **350.000 ₫** | **`30A-123.45`** | • `30A-123.45` (VinFast VF8 - Trắng)<br>• `29A-888.99` (Honda SH 150i - Đen) |
-| **2** | **Trần Thị Bình** | **`0987654321`** | **`123456`** | **Tài xế** | **500.000 ₫** | **`51G-456.78`** | • `51G-456.78` (Honda CR-V - Đen)<br>• `59F-333.22` (Yamaha Grande - Trắng) |
-| **3** | **Phạm Tuấn Anh** | **`0933445566`** | **`123456`** | **Tài xế** | **200.000 ₫** | **`30H-888.66`** | • `30H-888.66` (Toyota Cross - Bạc) |
-| **4** | **Lê Hoàng Nam** | **`0909999999`** | **`123456`** | **Chủ bãi** | **1.500.000 ₫** | **`29B-999.88`** | • `29B-999.88` (Mazda CX-5 - Đỏ) |
-
-> [!TIP]
-> **Đăng nhập số điện thoại tùy chọn:** Bạn cũng có thể nhập bất kỳ số điện thoại nào khác kèm mật khẩu `123456`, hệ thống sẽ tự động tạo tài khoản tài xế mới với số dư ban đầu 200.000 ₫!
-
----
-
-## 🚘 QUY TRÌNH ĐĂNG KÝ XE & QUÉT BIỂN SỐ AI OCR TÍNH TIỀN TỰ ĐỘNG
-
-### 1. Đăng ký phương tiện trên Web:
-1. Đăng nhập bằng tài khoản tài xế (VD: `0912345678` / `123456`).
-2. Vào mục **Cá nhân** hoặc trang chủ $\rightarrow$ chọn **Xe của tôi** (đường dẫn: `/driver/vehicles`).
-3. Bấm **"Đăng ký thêm biển số xe mới"** (`/driver/vehicles/add`).
-4. Nhập biển số (VD: `29A-686.88`), chọn loại xe, hãng xe, màu sắc và nhấn **Xác nhận đăng ký**.
-5. Xe sẽ lập tức được lưu vào hệ sinh thái ParkIQ và gắn cờ `● AI Camera: Sẵn sàng nhận diện`.
-
-### 2. Luồng tự động khi xe vào / ra bãi đỗ:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Xe as Phương tiện
-    participant Cam as Camera AI OCR
-    participant FB as Firebase Realtime
-    participant ESP as Phần cứng ESP32
-    participant Web as Web App ParkIQ
-
-    Note over Xe,Cam: 1. XE VÀO BÃI ĐỖ
-    Xe->>Cam: Xe đến Cổng Vào (VD: 30A-123.45)
-    Cam->>FB: Ghi node /ocr: {plate: "30A-123.45", direction: "in"}
-    FB-->>ESP: Cập nhật gateIn = "open" -> Servo quay 90° mở cổng
-    FB-->>Web: Web nhận diện biển số của Nguyễn Văn An
-    Web->>Web: Hiện thông báo: "Xe đã vào bãi", chuyển trạng thái "Đang gửi xe"
-
-    Note over Xe,Cam: 2. XE RỜI BÃI & TRỪ TIỀN
-    Xe->>Cam: Xe đến Cổng Ra
-    Cam->>FB: Ghi node /ocr: {plate: "30A-123.45", direction: "out", fee: 15000}
-    FB-->>ESP: Cập nhật gateOut = "open" -> Servo quay 90° mở cổng
-    FB-->>Web: Tự động trừ 15.000 ₫ từ Ví ParkIQ của tài xế
-    Web->>Web: Tạo biên lai giao dịch, kết thúc phiên gửi xe
+```text
+Park Node bãi A ──┐
+                  ├── MQTT broker ── Backend Express ── TimescaleDB
+Park Node bãi B ──┘                         │
+                                            └── REST ── Web React
 ```
 
----
+Web đọc ảnh chụp trạng thái qua REST khoảng mỗi giây. Khi gửi lệnh cổng, web gọi REST và backend publish MQTT đến đúng mã bãi. Trạng thái cổng trên API được cập nhật từ bản tin của Park Node. API báo trạng thái góc servo đã được firmware yêu cầu, việc xác nhận vị trí cơ khí cần quan sát tại cổng hoặc có cảm biến vị trí.
 
-## 🎮 HƯỚNG DẪN DEMO ĐIỀU KHIỂN XE (BẢNG ĐIỀU KHIỂN & OCR SCRIPT)
+## Thành phần dự án
 
-Dự án đã tích hợp sẵn các công cụ để bạn có thể thuyết trình toàn diện luồng dữ liệu thời gian thực:
+| Đường dẫn | Chức năng |
+|---|---|
+| [firmware/esp32_park_node](firmware/esp32_park_node) | Firmware chuẩn dùng ESP-IDF. Điểm vào chương trình là `main/main.c`. |
+| [components](firmware/esp32_park_node/components) | Task IR, siêu âm, điều khiển servo và đọc cấu hình SPIFFS. |
+| [backend](backend) | REST API, MQTT subscriber, dữ liệu hiện tại theo bãi và ghi lịch sử. |
+| [frontend](frontend) | Web React. Màn quản lý cổng chọn bãi theo `lot_id`. |
+| [docker-compose.yml](docker-compose.yml) | Mosquitto, TimescaleDB và backend. |
 
-### Cách 1: Sử dụng Bảng Điều Khiển Terminal (`dieu_khien_xe.bat`)
-1. Click đúp file: **`scripts/dieu_khien_xe.bat`** (hoặc mở terminal gõ: `python scripts/demo_controller.py`).
-2. Màn hình Terminal tương tác hiện lên với các lệnh chuyên nghiệp:
+`firmware/src/main.cpp`, các script build PlatformIO cũ và simulator HTTP thuộc luồng Arduino trước đây. Quy trình dưới đây dành cho ESP32 Park Node.
 
-| Lệnh | Ý nghĩa & Thao tác hệ thống |
-| :---: | :--- |
-| **`v1`** | **Xe 1 VÀO:** Quét biển số `30A-123.45` (VinFast VF8 - An) $\rightarrow$ Đỗ Ô 1 $\rightarrow$ Mở Cổng Vào $\rightarrow$ Web hiện thông báo nhận diện xe của An. |
-| **`r1`** | **Xe 1 RA:** Biển số `30A-123.45` rời bãi $\rightarrow$ Trống Ô 1 $\rightarrow$ Mở Cổng Ra $\rightarrow$ **Web tự động trừ 15.000 ₫ trong Ví của An!** |
-| **`v2`** | **Xe 2 VÀO:** Quét biển số `51G-456.78` (Honda CR-V - Bình) $\rightarrow$ Đỗ Ô 2 $\rightarrow$ Mở Cổng Vào. |
-| **`r2`** | **Xe 2 RA:** Biển số `51G-456.78` rời bãi $\rightarrow$ Trống Ô 2 $\rightarrow$ Mở Cổng Ra $\rightarrow$ **Web tự động trừ 20.000 ₫ trong Ví của Bình!** |
-| **`v3`** | **Xe 3 VÀO:** Quét biển số `30H-888.66` (Toyota Cross - Anh) $\rightarrow$ Đỗ Ô 3 $\rightarrow$ Mở Cổng Vào. |
-| **`r3`** | **Xe 3 RA:** Biển số `30H-888.66` rời bãi $\rightarrow$ Trống Ô 3 $\rightarrow$ Mở Cổng Ra $\rightarrow$ **Web tự động trừ 15.000 ₫!** |
-| **`ocr`** | **Quét biển số tùy chọn:** Cho phép bạn gõ bất kỳ biển số xe nào (VD biển số bạn vừa đăng ký trên Web) $\rightarrow$ Chọn Vào/Ra $\rightarrow$ Nhập số tiền $\rightarrow$ Hệ thống lập tức xử lý và Web hiển thị ngay! |
-| **`1` - `4`** | Bấm số 1, 2, 3 hoặc 4 để Cho xe vào / xe ra ô đỗ tương ứng. |
-| **`in`** / **`out`** | Mở thanh chắn barrier Cổng Vào / Cổng Ra. |
-| **`d1` / `d2` / `d3`** | Đổi khoảng cách siêu âm: Xa (45cm) / Vừa (18cm) / Sát tường (7cm - **Kích hoạt còi Buzzer kêu**). |
-| **`c`** / **`f`** | Dọn sạch bãi xe (Trống 4/4) / Lấp đầy bãi xe (Hết chỗ 0/4). |
+## Khởi động broker và backend
 
-### Cách 2: Điều khiển trực tiếp trên Web UI
-1. Chạy file: `scripts/run_frontend.bat` (hoặc mở terminal: `cd frontend && npm run dev`).
-2. Mở trình duyệt vào trang: **`http://localhost:5173/owner/gate`** (mục *Cổng IoT* của Chủ bãi).
-3. **Thao tác ngay trên màn hình:**
-   - **Bấm vào các nút quét AI OCR:** Có sẵn các nút quét nhanh `30A-123.45`, `51G-456.78`, `30H-888.66` hoặc ô nhập biển số tùy chọn.
-   - **Click chuột vào Ô 1, 2, 3, 4:** Ô đỗ lập tức đổi sang màu **ĐỎ (Có xe 🚗)** hoặc **XANH (Trống 🅿️)**, số chỗ trống tự động trừ/cộng tức thì *(lệnh ghi thẳng lên Firebase thật)*.
-   - **Click nút "Sát tường (7cm)":** Khoảng cách lập tức cập nhật và nhấp nháy đỏ **`🚨 CÒI KÊU BÁO ĐỘNG!`**.
-   - **Click "Mở cổng vào" / "Mở cổng ra":** Cánh tay barrier quay mở góc 90° và tự động đóng lại sau khi hết thời gian.
+Chạy từ thư mục gốc trên máy cùng mạng LAN với hai ESP32. Đặt `MQTT_BIND_IP` bằng IP LAN của máy chạy Docker. Ví dụ dưới đây dùng IP Wi-Fi hiện tại của máy này là `192.168.1.16`.
 
-### Cách 3: 1-Click mở toàn bộ hệ thống (`start_demo.bat`)
-Chỉ cần click đúp file: **`scripts/start_demo.bat`**
-- Hệ thống tự động: Bật bộ kết nối Firebase $\rightarrow$ Bật Web Server $\rightarrow$ Mở trình duyệt vào trang Quản lý bãi xe.
-
----
-
-## 🏗️ Kiến Trúc Hệ Thống (System Architecture)
-
-```mermaid
-graph TD
-    subgraph "1. PHẦN CỨNG BÃI XE (ESP32 HARDWARE)"
-        IR_SLOT["4x Cảm biến IR Ô đỗ<br>(GPIO 32, 33, 25, 26)"] --> ESP32["ESP32 DevKit Module<br>(PlatformIO C++)"]
-        IR_GATE["2x Cảm biến IR Cổng<br>(Vào: 27, Ra: 14)"] --> ESP32
-        HCSR04["Cảm biến siêu âm HC-SR04<br>(Trig: 5, Echo: 18)"] --> ESP32
-        ESP32 --> SERVO["2x Servo Barrier SG90<br>(Vào: GPIO 4, Ra: GPIO 13)"]
-        ESP32 --> BUZZER["Còi Buzzer Non-blocking<br>(GPIO 19)"]
-        ESP32 --> OLED["Màn hình OLED SSD1306 0.96''<br>(SDA: 21, SCL: 22)"]
-    end
-
-    subgraph "2. ĐÁM MÂY (FIREBASE REALTIME DATABASE)"
-        ESP32 <-- "HTTPS REST / Sync 800ms" --> FIREBASE["Firebase Realtime Database<br>(Singapore asia-southeast1)"]
-    end
-
-    subgraph "3. ỨNG DỤNG WEB & AI OCR"
-        FIREBASE <-- "SSE Stream & Commands" --> WEB["Ứng dụng Web ParkIQ<br>(React 19 + Tailwind CSS)"]
-        CAM["AI Camera OCR Scanner"] --> FB_OCR["/parking/lots/lot_mydinh/ocr"] --> FIREBASE
-    end
+```powershell
+$env:MQTT_BIND_IP = "192.168.1.16"
+docker compose up -d --build
+Invoke-RestMethod http://localhost:3000/api/health
+docker compose logs -f mqtt backend
 ```
 
----
+Cả hai kit dùng `mqtt://192.168.1.16:1883`. Backend trong Compose kết nối qua địa chỉ nội bộ `mqtt://mqtt:1883`. Nếu IP LAN của máy thay đổi, cập nhật cả `MQTT_BIND_IP` và địa chỉ broker trên hai kit. Nếu kit kết nối được Wi-Fi nhưng chưa thấy broker, kiểm tra tường lửa trên máy chạy Docker và chế độ cô lập thiết bị của mạng Wi-Fi.
 
-## 🔌 Bảng Sơ Đồ Đấu Nối Chân ESP32 (Hardware Pinout)
+Broker thử nghiệm trong repo cho phép kết nối ẩn danh. Giữ `remote_gate_enabled: false` khi thử telemetry. Trước khi mở điều khiển từ xa tại bãi thật, cần cấu hình xác thực, ACL cho MQTT và phân quyền API theo bãi.
 
-> [!IMPORTANT]
-> **Lưu ý phần cứng sống còn:** Chân điều khiển Servo Cổng Vào được cắm vào **GPIO 4** (thay vì GPIO 12 trước đây là Strapping Pin MTDI dễ gây bootloop treo chip ESP32). Nguồn 5V của 2 động cơ Servo nên cấp nguồn ngoài và **nối chung GND** với ESP32.
+Có thể chạy backend trực tiếp khi broker đã chạy. Dùng `DATABASE_URL` nếu cần lưu lịch sử, hoặc để backend chạy ở chế độ bộ nhớ cho phép thử giao tiếp.
 
-| STT | Thiết bị ngoại vi | Chân linh kiện | Chân cắm trên ESP32 | Ghi chú |
-| :---: | :--- | :---: | :---: | :--- |
-| **1** | Màn hình OLED SSD1306 | `VCC` / `GND` | `3.3V` / `GND` | Nguồn 3.3V an toàn cho màn hình |
-| | | `SDA` | **`GPIO 21`** | Giao tiếp I2C Data |
-| | | `SCL` | **`GPIO 22`** | Giao tiếp I2C Clock |
-| **2** | Cảm biến IR Ô đỗ 1 | `OUT` | **`GPIO 32`** | Mức LOW = Có xe, HIGH = Trống |
-| **3** | Cảm biến IR Ô đỗ 2 | `OUT` | **`GPIO 33`** | Mức LOW = Có xe, HIGH = Trống |
-| **4** | Cảm biến IR Ô đỗ 3 | `OUT` | **`GPIO 25`** | Mức LOW = Có xe, HIGH = Trống |
-| **5** | Cảm biến IR Ô đỗ 4 | `OUT` | **`GPIO 26`** | Mức LOW = Có xe, HIGH = Trống |
-| **6** | Cảm biến IR Cổng Vào | `OUT` | **`GPIO 27`** | Đặt trước thanh chắn cổng vào |
-| **7** | Cảm biến IR Cổng Ra | `OUT` | **`GPIO 14`** | Đặt trước thanh chắn cổng ra |
-| **8** | **Servo Barrier Cổng Vào** | **Dây cam (PWM)** | **`GPIO 4`** | **Mở 90° / Đóng 0° (Tránh GPIO 12)** |
-| **9** | **Servo Barrier Cổng Ra** | Dây cam (PWM) | **`GPIO 13`** | Mở 90° / Đóng 0° |
-| **10** | Cảm biến siêu âm HC-SR04 | `TRIG` | **`GPIO 5`** | Phát xung siêu âm |
-| | | `ECHO` | **`GPIO 18`** | Nhận xung phản hồi |
-| **11** | Còi báo động Buzzer | Cực dương (+) | **`GPIO 19`** | Cực âm (-) nối GND |
-
----
-
-## ☁️ Cấu Trúc Dữ Liệu Firebase Realtime Database
-
-Dữ liệu bãi xe được đồng bộ tại node `/parking/lots/lot_mydinh`:
-
-```json
-{
-  "parking": {
-    "lots": {
-      "lot_mydinh": {
-        "status": {
-          "lotId": "lot_mydinh",
-          "lotName": "B7 My Dinh",
-          "totalSlots": 4,
-          "freeSlots": 3,
-          "distance": 24.5,
-          "lastHeartbeat": 1726145678000,
-          "slots": {
-            "1": false,
-            "2": true,
-            "3": false,
-            "4": false
-          },
-          "gates": {
-            "in": "closed",
-            "out": "closed"
-          }
-        },
-        "commands": {
-          "gateIn": "idle",
-          "gateOut": "idle"
-        },
-        "ocr": {
-          "plate": "30A-123.45",
-          "direction": "out",
-          "timestamp": 1726145678000,
-          "vehicleName": "VinFast VF8",
-          "slot": 1,
-          "fee": 15000
-        }
-      }
-    }
-  }
-}
+```powershell
+cd backend
+npm ci
+$env:MQTT_URL = "mqtt://127.0.0.1:1883"
+npm start
 ```
 
-* **URL Firebase chính thức của dự án:**
-  `https://smartparking-139b7-default-rtdb.asia-southeast1.firebasedatabase.app/`
-* **Quy tắc bảo mật (Security Rules):**
-  ```json
-  {
-    "rules": {
-      ".read": true,
-      ".write": true
-    }
-  }
-  ```
+## Build và cấu hình hai Park Node
 
----
+Dùng shell đã kích hoạt ESP-IDF 6.x và công cụ ESP-IDF Component Manager. Project lấy ESP-MQTT và cJSON qua các manifest `idf_component.yml`. `sdkconfig.defaults` chọn bảng phân vùng tùy chỉnh có vùng SPIFFS `storage`.
 
-## 🔌 HƯỚNG DẪN NẠP CODE CHO ESP32 THẬT
+```powershell
+cd firmware/esp32_park_node
+idf.py set-target esp32
+idf.py build
+idf.py -p COM5 flash
+```
 
-1. **Cấu hình WiFi:**
-   Mở file [firmware/include/config.h](file:///f:/smartparking/SmartParkingSystem_SIC_IOT/firmware/include/config.h), điền WiFi nơi bạn đang ngồi:
-   ```cpp
-   #define WIFI_SSID     "Ten_WiFi_Cua_Ban"
-   #define WIFI_PASSWORD "Mat_Khau_WiFi"
-   ```
-2. **Đấu nối linh kiện:** Cắm dây theo đúng bảng **Sơ đồ đấu nối chân ESP32** ở trên.
-3. **Nạp code (1-Click):**
-   - Cắm cáp Micro-USB từ ESP32 vào máy tính.
-   - Click đúp chạy file: **`scripts/upload_firmware.bat`** *(hoặc lệnh `pio run -t upload` trong `firmware/`)*.
-4. **Vận hành thực tế:**
-   - Màn hình OLED trên ESP32 sáng chữ: `B7 My Dinh [IoT]`.
-   - Che tay vào cảm biến Ô 1 $\rightarrow$ OLED cập nhật `S1:X`, trên Web lập tức đổi sang màu ĐỎ.
-   - Bấm nút "Mở cổng" trên Web $\rightarrow$ Cánh tay Servo trên bàn quay mở 90° và tự động đóng lại!
+Sao chép [config.example.json](firmware/esp32_park_node/config_python/config.example.json) thành hai tệp cấu hình cục bộ. Điền Wi-Fi, địa chỉ broker và chân GPIO đúng với kit tại từng bãi. Hai mã `lot_mydinh` và `lot_caugiay` là dữ liệu mẫu. Có thể dùng mã khác theo địa điểm thật.
 
----
+| Khóa | Bãi A | Bãi B |
+|---|---|---|
+| `lot_id` | Mã riêng, ví dụ `lot_mydinh` | Mã khác bãi A, ví dụ `lot_caugiay` |
+| `mqtt_broker_uri` | `mqtt://192.168.1.16:1883` | `mqtt://192.168.1.16:1883` |
+| `num_parking_lots` | Số ô siêu âm trên kit A, từ 1 đến 10 | Số ô siêu âm trên kit B, từ 1 đến 10 |
+| `trigger_pins`, `echo_pins` | Danh sách GPIO theo thứ tự ô | Danh sách GPIO theo thứ tự ô |
+| `remote_gate_enabled` | Mặc định `false` | Mặc định `false` |
 
-## 📁 Thư Mục Tiện Ích (`scripts/`)
+Đặt `lot_id` dài từ 1 đến 50 ký tự, chỉ dùng chữ ASCII, số, gạch dưới và gạch ngang. `num_parking_lots` là **số ô** trên một kit. Mỗi địa điểm dùng một mã bãi khác nhau.
 
-| Tên tệp | Chức năng |
-| :--- | :--- |
-| **`kich_ban_thuyet_trinh.md`** | **Kịch Bản Nói Thuyết Trình (Speaker Notes):** Lời thoại chi tiết từng slide, phân bổ thời gian và gợi ý trả lời phản biện Q&A |
-| **`mo_slide_bao_cao.bat`** | **1-Click mở Slide Báo Cáo Thuyết Trình:** Mở file `slide_bao_cao.html` với hiệu ứng chuyển động, toàn màn hình và tóm tắt toàn bộ dự án |
-| **`slide_bao_cao.html`** | Slide thuyết trình báo cáo hoàn chỉnh được xây dựng bằng HTML5, CSS3, JavaScript (tích hợp nút bật kịch bản nói phím `S`) |
-| **`xem_log_firebase.bat`** | **Xem Live Log thời gian thực từ Firebase:** Hiển thị tức thì mọi sự kiện xe vào/ra, OCR, mở barrier, còi kêu từ Terminal |
-| **`xem_log_esp32.bat`** | **Xem Log Serial trực tiếp từ chip ESP32:** Đọc dữ liệu debug 115200 baud qua cáp USB |
-| **`dieu_khien_xe.bat`** | Mở **bảng điều khiển Terminal tương tác** (quét OCR `v1`-`r3`, `ocr`, đổi slot `1`-`4`, mở barrier `in`/`out`, chỉnh khoảng cách `d1`-`d3`) |
-| **`run_frontend.bat`** | Khởi động máy chủ giao diện Web Frontend (Vite) tại `http://localhost:5173` |
-| **`start_demo.bat`** | **1-Click khởi động toàn bộ demo** (ESP32 Simulator + Web Server + Mở trình duyệt) |
-| **`upload_firmware.bat`** | **1-Click biên dịch và nạp code** trực tiếp vào kit ESP32 qua cáp USB |
-| **`build_firmware.bat`** | Biên dịch kiểm tra code C++ của ESP32 bằng PlatformIO |
-| **`test_firebase.py`** | Kiểm tra đường truyền và tính sẵn sàng của Firebase Realtime Database |
-| **`demo_controller.py`** | Script Python điều khiển xe vào/ra và kích hoạt quét biển số OCR |
-| **`log_viewer.py`** | Trình đọc và hiển thị luồng nhật ký sự kiện thời gian thực từ Firebase |
+Sau khi flash, đóng Serial Monitor. Cài PySerial nếu cần, chạy script với đúng cổng và bấm RESET khi script đang chờ. Firmware nhận JSON qua UART0, lưu vào SPIFFS rồi nạp cấu hình.
 
----
+```powershell
+python -m pip install pyserial
+python config_python/config.py --port COM5 --config config_python/config.local.a.json
+python config_python/config.py --port COM6 --config config_python/config.local.b.json
+```
 
-## 🎯 Tổng Kết Các Cải Tiến Kỹ Thuật Đã Hoàn Thiện
+Thay COM5 và COM6 bằng cổng USB thật. Dùng `idf.py -p COM5 monitor` để xem log sau khi cấu hình. Thiết bị đang chạy firmware cũ cần flash bản này và nạp cấu hình có `lot_id` trước khi ghép vào hệ thống hai bãi.
 
-1. **Quét Biển Số AI OCR & Trừ Tiền Tự Động:** Tích hợp node `/ocr` trên Firebase Realtime Database. Khi xe ra bãi, hệ thống đối soát biển số xe đã đăng ký, tự động trừ tiền vào Ví ParkIQ và ghi nhận biên lai giao dịch.
-2. **Thông Báo Thời Gian Thực (OCR Banner):** Giao diện Web hiển thị ngay biểu ngữ thông báo khi có sự kiện quét biển số tại Cổng Vào / Cổng Ra.
-3. **Quản Lý & Đăng Ký Phương Tiện:** Hỗ trợ người dùng đăng ký nhiều xe (ô tô, xe máy) và chuyển đổi xe mặc định.
-4. **Hệ Thống Đa Người Dùng Thực Tế:** 4 tài khoản mẫu (Nguyễn Văn An, Trần Thị Bình, Phạm Tuấn Anh, Lê Hoàng Nam) với số dư ví và phương tiện độc lập, lưu trữ bền vững qua `localStorage`.
-5. **Khắc phục lỗi Strapping Pin:** Chuyển `SERVO_IN_PIN` sang `GPIO 4`, loại bỏ hoàn toàn nguy cơ bootloop và hỏng flash ESP32.
-6. **Khử Delay làm đông cứng CPU:** Viết lại toàn bộ hàm `Buzzer_Update` dùng timer `millis()`, giải phóng CPU hoàn toàn.
-7. **Cơ chế Barrier an toàn chống chém xe:** Bổ sung logic kiểm tra cảm biến: Hết 4s mở, nếu xe vẫn còn đứng chắn cổng thì tiếp tục giữ mở, không hạ cánh tay đè vào nóc xe.
-8. **Xóa sạch Mock Data:** Loại bỏ toàn bộ các bãi xe 120 chỗ, 200 chỗ ảo; toàn bộ hệ thống chạy 100% dữ liệu thật đồng bộ qua Firebase Realtime Database.
+## Hợp đồng MQTT
+
+Các topic có dạng `parking/{lotId}/...`. Thiết bị không phát retained. Các bản tin định kỳ cho phép backend nhận lại trạng thái sau khi kết nối lại.
+
+| Chiều | Topic | Payload ví dụ |
+|---|---|---|
+| Park Node → backend | `parking/{lotId}/slots/{slot}` | `{"totalSlots":2,"occupied":true,"distanceCm":12}` |
+| Park Node → backend | `parking/{lotId}/gates/in` hoặc `/out` | `{"state":"closed","remoteEnabled":false}` |
+| Backend → Park Node | `parking/{lotId}/commands/in` hoặc `/out` | Văn bản `open` |
+
+Ô đỗ đánh số từ 1. Firmware báo khi trạng thái thay đổi và định kỳ khoảng 2 giây. Timeout không có Echo được coi là không phát hiện xe, còn lỗi đo khác gửi `occupied: null`. Bản tin có thể dùng `distanceCm: null` khi thiếu khoảng cách hợp lệ. Backend đếm số ô được xác nhận trống và dùng khoảng cách hợp lệ nhỏ nhất làm giá trị tổng quan của bãi. Cổng báo trạng thái khi thay đổi và định kỳ khoảng 1 giây.
+
+Điều khiển tại chỗ bằng IR tiếp tục hoạt động khi mất MQTT. Khi được bật điều khiển từ xa, một lệnh MQTT hợp lệ yêu cầu giữ mở khoảng 4 giây. Firmware chỉ yêu cầu đóng khi hết thời gian giữ và IR không còn phát hiện vật. Lệnh dùng QoS 0, không retained và không có hàng đợi ngoại tuyến. HTTP `202` cho biết backend đã gửi lệnh MQTT. Đọc bản tin trạng thái tiếp theo và đối chiếu tại thiết bị để xác nhận phản hồi.
+
+## Chạy web và kiểm tra tại hai bãi
+
+Dùng Node.js 22.22 trở lên cho frontend. Mở `http://localhost:5173/owner/gate` sau khi chạy Vite.
+
+```powershell
+cd frontend
+npm ci
+npm run dev
+```
+
+Đặt `VITE_API_BASE_URL` trước khi chạy Vite hoặc build nếu web và backend chạy trên hai máy khác nhau. Giá trị mặc định là `http://localhost:3000/api`.
+
+1. Kiểm tra `GET /api/health` báo `mqtt: connected`.
+2. Bật cả hai kit và kiểm tra `GET /api/lots/{lotId}/status` cho từng mã bãi. Đối chiếu `lastHeartbeat` và số ô với kit thật. Có thể tải lại trang quản lý cổng sau khi các bãi mới bắt đầu gửi dữ liệu.
+3. Tác động vào cảm biến một ô ở bãi A rồi làm tương tự ở bãi B. Xác nhận chỉ đúng ô ở đúng bãi thay đổi trên giao diện.
+4. Khi đã cấu hình quyền và có người giám sát tại hiện trường, kiểm tra lệnh mở từ xa ở từng cổng. So sánh bản tin trạng thái với chuyển động thực tế và xác nhận bãi còn lại không nhận lệnh.
+5. Ngắt Wi-Fi một kit trong lúc kit còn lại hoạt động. Kiểm tra dữ liệu bãi còn lại tiếp tục cập nhật và kit bị ngắt gửi lại trạng thái sau khi kết nối.
+
+Backend giữ API OCR `POST /api/lots/{lotId}/ocr`. Khi bãi có Park Node đang bật điều khiển từ xa, sự kiện có thể yêu cầu mở đúng cổng qua MQTT. Trạng thái ô tiếp tục lấy từ cảm biến. Màn tài xế đọc sự kiện OCR gần nhất của bãi mặc định, nên có thể bỏ qua sự kiện trung gian nếu nhiều bản tin đến giữa hai lượt đọc. Dữ liệu phí và số dư cần kiểm thử riêng với TimescaleDB.
+
+## Kết quả kiểm tra
+
+- ESP-IDF 6.1 beta đã build thành công `build/esp32_park_node.bin` cho ESP32. Frontend đã qua kiểm tra TypeScript và build Vite.
+- Bài thử với broker MQTT cục bộ và hai mã bãi xác nhận trạng thái tách riêng, lệnh chỉ publish tới topic được chọn và API từ chối khi node tắt điều khiển từ xa hoặc trạng thái cổng đã cũ.
+- Còn cần nghiệm thu trên hai ESP32 thật và kiểm tra lưu lịch sử với TimescaleDB. Bài thử MQTT dùng backend ở chế độ bộ nhớ.

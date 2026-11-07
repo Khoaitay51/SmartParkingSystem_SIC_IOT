@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 =============================================================================
-  SMART PARKING - BẢNG ĐIỀU KHIỂN THỰC TẾ (FIREBASE REALTIME CONTROLLER)
-  Hệ thống mô phỏng bãi xe B7 Mỹ Đình:
-  - Cho xe vào / xe ra 4 ô đỗ
+  SMART PARKING - BẢNG ĐIỀU KHIỂN THỰC TẾ (TIMESCALEDB CONTROLLER)
+  Hệ thống mô phỏng & điều khiển bãi xe (Hỗ trợ Multi-Lot & TimescaleDB):
+  - Cho xe vào / xe ra các ô đỗ
   - Quét biển số AI Camera OCR tự động mở cổng và trừ tiền ví tài xế
   - Điều khiển mở barrier Cổng Vào / Cổng Ra
   - Thay đổi khoảng cách cảm biến siêu âm HC-SR04 kích hoạt còi Buzzer
@@ -13,12 +13,18 @@
 import sys
 import time
 import requests
+import argparse
 
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
-FIREBASE_URL = "https://smartparking-139b7-default-rtdb.asia-southeast1.firebasedatabase.app"
-LOT_ID = "lot_mydinh"
+parser = argparse.ArgumentParser(description="Smart Parking Terminal Controller")
+parser.add_argument("--lot", default="lot_mydinh", help="ID bãi xe (mặc định: lot_mydinh)")
+parser.add_argument("--backend", default="http://localhost:3000/api", help="URL Backend API")
+args, unknown = parser.parse_known_args()
+
+BACKEND_URL = args.backend
+LOT_ID = args.lot
 
 # Danh sách xe mẫu đã đăng ký trong hệ thống ParkIQ
 SAMPLE_CARS = {
@@ -45,35 +51,16 @@ SAMPLE_CARS = {
     },
 }
 
-def extract_slots(raw_slots):
-    """
-    Firebase RTDB tự động chuyển object có key số sang dạng list [None, slot1, slot2, slot3, slot4].
-    Hàm này chuẩn hóa về dict {1: bool, 2: bool, 3: bool, 4: bool}.
-    """
-    result = {1: False, 2: False, 3: False, 4: False}
-    if isinstance(raw_slots, list):
-        for i in range(1, 5):
-            if i < len(raw_slots):
-                result[i] = bool(raw_slots[i])
-            elif (i - 1) < len(raw_slots):
-                result[i] = bool(raw_slots[i - 1])
-    elif isinstance(raw_slots, dict):
-        for i in range(1, 5):
-            result[i] = bool(raw_slots.get(str(i), False))
-    return result
-
 def get_current_status():
-    url = f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status.json"
+    url = f"{BACKEND_URL}/lots/{LOT_ID}/status"
     try:
         res = requests.get(url, timeout=5)
-        if res.status_code == 200 and res.text != "null":
-            data = res.json()
-            if isinstance(data, dict):
-                return data
+        if res.status_code == 200:
+            return res.json()
     except Exception as e:
-        print(f"[LỖI] Không thể đọc Firebase: {e}")
+        print(f"[LỖI] Không thể đọc từ Backend: {e}")
     return {
-        "slots": {1: False, 2: False, 3: False, 4: False},
+        "slots": {"1": False, "2": False, "3": False, "4": False},
         "freeSlots": 4,
         "totalSlots": 4,
         "distance": 25.0,
@@ -82,130 +69,73 @@ def get_current_status():
 
 def toggle_slot(slot_num):
     data = get_current_status()
-    slots_dict = extract_slots(data.get("slots"))
-    current_state = slots_dict.get(slot_num, False)
+    slots = data.get("slots", {})
+    current_state = bool(slots.get(str(slot_num), False))
     new_state = not current_state
 
-    # Cập nhật trực tiếp ô đỗ lên Firebase
-    slot_url = f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/slots/{slot_num}.json"
-    requests.put(slot_url, json=new_state, timeout=5)
-
-    slots_dict[slot_num] = new_state
-    free_count = sum(1 for v in slots_dict.values() if not v)
-
-    # Cập nhật freeSlots và heartbeat
-    requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/freeSlots.json", json=free_count, timeout=5)
-    requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/lastHeartbeat.json", json=int(time.time() * 1000), timeout=5)
+    # Cập nhật ô đỗ lên Backend
+    url = f"{BACKEND_URL}/lots/{LOT_ID}/slots/{slot_num}"
+    res = requests.put(url, json={"occupied": new_state}, timeout=5)
 
     action_text = "🚗 XE ĐÃ ĐỖ VÀO" if new_state else "🅿️ XE ĐÃ RỜI ĐI (TRỐNG)"
-    print(f"\n=> ĐÃ CẬP NHẬT: Ô {slot_num} -> {action_text}! (Còn trống {free_count}/4 ô)")
+    free_count = res.json().get("freeSlots", "?") if res.status_code == 200 else "?"
+    print(f"\n=> ĐÃ CẬP NHẬT: Ô {slot_num} -> {action_text}! (Còn trống {free_count} ô)")
 
 def set_distance(dist):
-    url = f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/distance.json"
-    requests.put(url, json=dist, timeout=5)
-    requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/lastHeartbeat.json", json=int(time.time() * 1000), timeout=5)
+    url = f"{BACKEND_URL}/lots/{LOT_ID}/distance"
+    requests.put(url, json={"distance": dist}, timeout=5)
     alert = "🚨 (ĐỖ QUÁ SÁT - CÒI KÊU!)" if dist <= 10 else ""
     print(f"\n=> ĐÃ CẬP NHẬT: Khoảng cách xe = {dist} cm {alert}")
 
-def set_gate(gate_name, state):
-    url = f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/gates/{gate_name}.json"
-    cmd_url = f"{FIREBASE_URL}/parking/lots/{LOT_ID}/commands/{'gateIn' if gate_name == 'in' else 'gateOut'}.json"
-    requests.put(url, json=state, timeout=5)
-    requests.put(cmd_url, json=state, timeout=5)
-    requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/lastHeartbeat.json", json=int(time.time() * 1000), timeout=5)
-    state_text = "MỞ 90 ĐỘ" if state == "open" else "ĐÓNG LẠI"
-    print(f"\n=> CỔNG {gate_name.upper()} -> {state_text}!")
+def set_gate(gate_name):
+    # gate_name: 'gateIn' hoặc 'gateOut'
+    url = f"{BACKEND_URL}/lots/{LOT_ID}/commands"
+    requests.post(url, json={"gate": gate_name, "action": "open"}, timeout=5)
+    print(f"\n=> ĐÃ GỬI LỆNH MỞ CỔNG {gate_name.upper()} 90 ĐỘ!")
 
 def trigger_ocr(plate, direction, vehicle_name="Xe cá nhân", slot_num=1, fee=15000):
-    """
-    Kích hoạt sự kiện quét biển số AI OCR:
-    - Nếu Vào (in): Đánh dấu ô slot_num có xe, mở barrier Cổng Vào, gửi node OCR
-    - Nếu Ra (out): Giải phóng ô slot_num (trống), mở barrier Cổng Ra, gửi node OCR kèm phí đỗ xe
-    Web App sẽ tự động bắt sự kiện, hiển thị thông báo và trừ tiền ví tài xế!
-    """
-    ts = int(time.time() * 1000)
-    data = get_current_status()
-    slots_dict = extract_slots(data.get("slots"))
+    url = f"{BACKEND_URL}/lots/{LOT_ID}/ocr"
+    payload = {
+        "plate": plate,
+        "direction": direction,
+        "vehicleName": vehicle_name,
+        "slot": slot_num,
+        "fee": fee if direction == "out" else 0
+    }
+    res = requests.post(url, json=payload, timeout=5)
+    data = res.json() if res.status_code == 200 else {}
+    free_count = data.get("currentLotState", {}).get("freeSlots", "?")
 
     if direction == "in":
-        # Chiếm ô đỗ
-        slots_dict[slot_num] = True
-        requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/slots/{slot_num}.json", json=True, timeout=5)
-        free_count = sum(1 for v in slots_dict.values() if not v)
-        requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/freeSlots.json", json=free_count, timeout=5)
-
-        # Mở cổng vào
-        requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/gates/in.json", json="open", timeout=5)
-        requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/commands/gateIn.json", json="open", timeout=5)
-
-        # Gửi sự kiện OCR
-        ocr_payload = {
-            "plate": plate,
-            "direction": "in",
-            "timestamp": ts,
-            "vehicleName": vehicle_name,
-            "slot": slot_num,
-            "fee": 0
-        }
-        requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/ocr.json", json=ocr_payload, timeout=5)
-        requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/lastHeartbeat.json", json=ts, timeout=5)
-
         print("\n" + "=" * 62)
-        print("  📸 AI CAMERA OCR: XE VÀO BÃI ĐỖ")
+        print("  📸 AI CAMERA OCR: XE VÀO BÃI ĐỖ (TIMESCALEDB)")
         print("=" * 62)
         print(f"  Biển số xe:  {plate} ({vehicle_name})")
         print(f"  Ô đỗ xe:     Ô {slot_num} -> ĐÃ CÓ XE (🔴)")
-        print(f"  Barrier:     CỔNG VÀO ĐANG MỞ (90 ĐỘ)")
-        print(f"  Chỗ trống:   Còn {free_count}/4 ô")
-        print(f"  Trạng thái:  Đã gửi lên Firebase -> Web hiển thị xe đang đỗ!")
+        print(f"  Barrier:     CỔNG VÀO MỞ 90 ĐỘ")
+        print(f"  Chỗ trống:   Còn {free_count} ô")
+        print(f"  Trạng thái:  Đã ghi vào TimescaleDB Hypertable & Web hiển thị!")
         print("=" * 62)
-
-    else: # out
-        # Giải phóng ô đỗ
-        slots_dict[slot_num] = False
-        requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/slots/{slot_num}.json", json=False, timeout=5)
-        free_count = sum(1 for v in slots_dict.values() if not v)
-        requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/freeSlots.json", json=free_count, timeout=5)
-
-        # Mở cổng ra
-        requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/gates/out.json", json="open", timeout=5)
-        requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/commands/gateOut.json", json="open", timeout=5)
-
-        # Gửi sự kiện OCR kèm phí gửi xe
-        ocr_payload = {
-            "plate": plate,
-            "direction": "out",
-            "timestamp": ts,
-            "vehicleName": vehicle_name,
-            "slot": slot_num,
-            "fee": fee
-        }
-        requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/ocr.json", json=ocr_payload, timeout=5)
-        requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/lastHeartbeat.json", json=ts, timeout=5)
-
+    else:
         print("\n" + "=" * 62)
-        print("  📸 AI CAMERA OCR: XE RỜI BÃI & TỰ ĐỘNG TRỪ TIỀN VÍ")
+        print("  📸 AI CAMERA OCR: XE RỜI BÃI & TỰ ĐỘNG TRỪ TIỀN VÍ (TIMESCALEDB)")
         print("=" * 62)
         print(f"  Biển số xe:  {plate} ({vehicle_name})")
         print(f"  Ô đỗ xe:     Ô {slot_num} -> ĐÃ GIẢI PHÓNG (🟢 TRỐNG)")
         print(f"  Phí gửi xe:  {fee:,.0f} ₫")
-        print(f"  Barrier:     CỔNG RA ĐANG MỞ (90 ĐỘ)")
-        print(f"  Chỗ trống:   Còn {free_count}/4 ô")
-        print(f"  Ví tài xế:   Web tự động trừ {fee:,.0f} ₫ và tạo biên lai!")
+        print(f"  Barrier:     CỔNG RA MỞ 90 ĐỘ")
+        print(f"  Chỗ trống:   Còn {free_count} ô")
+        print(f"  Ví tài xế:   Tự động trừ {fee:,.0f} ₫ trong TimescaleDB!")
         print("=" * 62)
 
 def fill_all():
     for i in range(1, 5):
-        requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/slots/{i}.json", json=True, timeout=5)
-    requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/freeSlots.json", json=0, timeout=5)
-    requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/lastHeartbeat.json", json=int(time.time() * 1000), timeout=5)
-    print("\n=> ĐÃ LẤP ĐẦY TOÀN BỘ 4 Ô ĐỖ (HẾT CHỖ: 0/4)")
+        requests.put(f"{BACKEND_URL}/lots/{LOT_ID}/slots/{i}", json={"occupied": True}, timeout=3)
+    print("\n=> ĐÃ LẤP ĐẦY TOÀN BỘ Ô ĐỖ (HẾT CHỖ: 0/4)")
 
 def clear_all():
     for i in range(1, 5):
-        requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/slots/{i}.json", json=False, timeout=5)
-    requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/freeSlots.json", json=4, timeout=5)
-    requests.put(f"{FIREBASE_URL}/parking/lots/{LOT_ID}/status/lastHeartbeat.json", json=int(time.time() * 1000), timeout=5)
+        requests.put(f"{BACKEND_URL}/lots/{LOT_ID}/slots/{i}", json={"occupied": False}, timeout=3)
     print("\n=> ĐÃ DỌN SẠCH TOÀN BỘ BÃI XE (TRỐNG CẢ 4/4 Ô)")
 
 def manual_ocr_input():
@@ -218,114 +148,108 @@ def manual_ocr_input():
     dir_choice = input("👉 Chọn chiều xe (1: VÀO bãi / 2: RA bãi): ").strip()
     direction = "in" if dir_choice == "1" else "out"
 
-    slot_str = input("👉 Chọn số ô đỗ (1, 2, 3 hoặc 4) [Mặc định 1]: ").strip()
-    slot_num = int(slot_str) if slot_str in ["1", "2", "3", "4"] else 1
-
+    slot = 1
     fee = 15000
-    if direction == "out":
-        fee_str = input("👉 Nhập số tiền gửi xe (VNĐ) [Mặc định 15000]: ").strip()
-        try:
-            fee = int(fee_str) if fee_str else 15000
-        except ValueError:
-            fee = 15000
+    if direction == "in":
+        s_in = input("👉 Chọn ô đỗ (1-4, Enter mặc định ô 1): ").strip()
+        if s_in in ["1", "2", "3", "4"]:
+            slot = int(s_in)
+    else:
+        f_in = input("👉 Nhập phí gửi xe VNĐ (Enter mặc định 15000): ").strip()
+        if f_in.isdigit():
+            fee = int(f_in)
 
-    trigger_ocr(plate, direction, vehicle_name="Xe tùy chọn", slot_num=slot_num, fee=fee)
+    vname = input("👉 Tên xe / Hãng xe (Enter mặc định 'Xe đăng ký mới'): ").strip()
+    if not vname:
+        vname = "Xe đăng ký mới"
+
+    trigger_ocr(plate, direction, vname, slot, fee)
 
 def print_menu():
-    data = get_current_status()
-    slots_dict = extract_slots(data.get("slots"))
-    dist = data.get("distance", -1)
-    gates = data.get("gates", {})
-    if not isinstance(gates, dict):
-        gates = {"in": "closed", "out": "closed"}
-    free = data.get("freeSlots", sum(1 for v in slots_dict.values() if not v))
-
-    print("\n" + "=" * 64)
-    print("       SMART PARKING - BẢNG ĐIỀU KHIỂN BÃI XE THỰC TẾ")
-    print("=" * 64)
-    print(f"  TRẠNG THÁI HIỆN TẠI (FIREBASE): Còn trống {free}/4 chỗ")
+    st = get_current_status()
+    slots = st.get("slots", {})
+    slot_strs = []
     for i in range(1, 5):
-        is_occ = slots_dict[i]
-        status = "🔴 CÓ XE ĐỖ" if is_occ else "🟢 ĐANG TRỐNG"
-        action = "Bấm để CHO XE RA" if is_occ else "Bấm để XE VÀO"
-        print(f"    [{i}] Ô {i}: {status}  ({action})")
-    print("  --------------------------------------------------------------")
-    print(f"    Khoảng cách siêu âm (HC-SR04): {dist} cm")
-    print(f"    Cổng Vào: {str(gates.get('in', 'closed')).upper()} | Cổng Ra: {str(gates.get('out', 'closed')).upper()}")
-    print("  --------------------------------------------------------------")
-    print("  📷 QUÉT BIỂN SỐ AI OCR (TỰ ĐỘNG MỞ CỔNG & TÍNH TIỀN):")
-    print("    [v1] Xe 1 VÀO: 30A-123.45 (VinFast VF8 - An)  -> Đỗ Ô 1, mở Cổng Vào")
-    print("    [r1] Xe 1 RA:  30A-123.45                     -> Trừ 15.000₫, mở Cổng Ra")
-    print("    [v2] Xe 2 VÀO: 51G-456.78 (Honda CR-V - Bình) -> Đỗ Ô 2, mở Cổng Vào")
-    print("    [r2] Xe 2 RA:  51G-456.78                     -> Trừ 20.000₫, mở Cổng Ra")
-    print("    [v3] Xe 3 VÀO: 30H-888.66 (Toyota Cross - Anh)-> Đỗ Ô 3, mở Cổng Vào")
-    print("    [r3] Xe 3 RA:  30H-888.66                     -> Trừ 15.000₫, mở Cổng Ra")
-    print("    [ocr] Quét biển số bất kỳ (Manual OCR - Test biển bạn tự đăng ký)")
-    print("  --------------------------------------------------------------")
-    print("  ⚡ CÁC PHÍM ĐIỀU KHIỂN THỦ CÔNG:")
-    print("    [1-4]   Bấm số 1, 2, 3 hoặc 4 để Cho xe vào / xe ra ô đó")
-    print("    [in]    Mở barrier Cổng Vào")
-    print("    [out]   Mở barrier Cổng Ra")
-    print("    [d1]    Đổi khoảng cách: Xa (45 cm)")
-    print("    [d2]    Đổi khoảng cách: Vừa (18 cm)")
-    print("    [d3]    Đổi khoảng cách: Quá sát tường (7 cm - Kích hoạt CÒI KÊU!)")
-    print("    [c]     Dọn sạch bãi xe (Trống 4/4 ô)")
-    print("    [f]     Lấp đầy bãi xe (Có xe cả 4/4 ô - HẾT CHỖ)")
-    print("    [q]     Thoát")
-    print("=" * 64)
+        occ = bool(slots.get(str(i), False))
+        slot_strs.append(f"Ô{i}:{'🔴Đỗ' if occ else '🟢Trống'}")
+    slots_display = " | ".join(slot_strs)
+    free = st.get("freeSlots", "?")
+    dist = st.get("distance", -1)
+
+    print("\n" + "=" * 68)
+    print(f"  SMART PARKING - BẢNG ĐIỀU KHIỂN (TIMESCALEDB BACKEND)")
+    print(f"  Bãi xe: {LOT_ID.upper()} | Trống: {free}/4 chỗ | Khoảng cách: {dist}cm")
+    print(f"  Trạng thái: {slots_display}")
+    print("=" * 68)
+    print("  --- QUÉT AI OCR (TỰ ĐỘNG MỞ CỔNG & TRỪ TIỀN VÍ) ---")
+    print("   [v1] Xe 1 VÀO (30A-123.45 - VinFast VF8 An)   -> Đỗ Ô 1, Mở Cổng Vào")
+    print("   [r1] Xe 1 RA  (30A-123.45 - VinFast VF8 An)   -> Trống Ô 1, Trừ 15.000₫")
+    print("   [v2] Xe 2 VÀO (51G-456.78 - Honda CR-V Bình)  -> Đỗ Ô 2, Mở Cổng Vào")
+    print("   [r2] Xe 2 RA  (51G-456.78 - Honda CR-V Bình)  -> Trống Ô 2, Trừ 20.000₫")
+    print("   [v3] Xe 3 VÀO (30H-888.66 - Corolla Anh)      -> Đỗ Ô 3, Mở Cổng Vào")
+    print("   [r3] Xe 3 RA  (30H-888.66 - Corolla Anh)      -> Trống Ô 3, Trừ 15.000₫")
+    print("   [ocr] Quét biển số TÙY CHỌN (Gõ bất kỳ biển số nào)")
+    print("  --- ĐIỀU KHIỂN THIẾT BỊ NGOẠI VI & Ô ĐỖ ---")
+    print("   [1] Đổi trạng thái Ô 1     |  [2] Đổi trạng thái Ô 2")
+    print("   [3] Đổi trạng thái Ô 3     |  [4] Đổi trạng thái Ô 4")
+    print("   [in] Mở barrier CỔNG VÀO   |  [out] Mở barrier CỔNG RA")
+    print("   [d1] Khoảng cách XA (45cm) |  [d2] Khoảng cách VỪA (18cm)")
+    print("   [d3] SÁT TƯỜNG (7cm - CÒI KÊU CẢNH BÁO!)")
+    print("   [c] Dọn sạch bãi (Trống 4/4) | [f] Lấp đầy bãi (Hết chỗ 0/4)")
+    print("   [q] Thoát chương trình")
+    print("=" * 68)
 
 def main():
     while True:
         print_menu()
-        try:
-            choice = input("👉 Nhập lệnh điều khiển: ").strip().lower()
-        except (KeyboardInterrupt, EOFError):
+        cmd = input("👉 Nhập lệnh: ").strip().lower()
+
+        if cmd == "q":
             print("\nĐã thoát.")
             break
-
-        if choice == "q":
-            print("Tạm biệt!")
-            break
-        elif choice in ["1", "2", "3", "4"]:
-            toggle_slot(int(choice))
-        elif choice == "v1":
+        elif cmd == "v1":
             car = SAMPLE_CARS["1"]
-            trigger_ocr(car["plate"], "in", vehicle_name=car["name"], slot_num=car["slot"])
-        elif choice == "r1":
+            trigger_ocr(car["plate"], "in", car["name"], car["slot"], car["fee"])
+        elif cmd == "r1":
             car = SAMPLE_CARS["1"]
-            trigger_ocr(car["plate"], "out", vehicle_name=car["name"], slot_num=car["slot"], fee=car["fee"])
-        elif choice == "v2":
+            trigger_ocr(car["plate"], "out", car["name"], car["slot"], car["fee"])
+        elif cmd == "v2":
             car = SAMPLE_CARS["2"]
-            trigger_ocr(car["plate"], "in", vehicle_name=car["name"], slot_num=car["slot"])
-        elif choice == "r2":
+            trigger_ocr(car["plate"], "in", car["name"], car["slot"], car["fee"])
+        elif cmd == "r2":
             car = SAMPLE_CARS["2"]
-            trigger_ocr(car["plate"], "out", vehicle_name=car["name"], slot_num=car["slot"], fee=car["fee"])
-        elif choice == "v3":
+            trigger_ocr(car["plate"], "out", car["name"], car["slot"], car["fee"])
+        elif cmd == "v3":
             car = SAMPLE_CARS["3"]
-            trigger_ocr(car["plate"], "in", vehicle_name=car["name"], slot_num=car["slot"])
-        elif choice == "r3":
+            trigger_ocr(car["plate"], "in", car["name"], car["slot"], car["fee"])
+        elif cmd == "r3":
             car = SAMPLE_CARS["3"]
-            trigger_ocr(car["plate"], "out", vehicle_name=car["name"], slot_num=car["slot"], fee=car["fee"])
-        elif choice == "ocr":
+            trigger_ocr(car["plate"], "out", car["name"], car["slot"], car["fee"])
+        elif cmd == "ocr":
             manual_ocr_input()
-        elif choice == "in":
-            set_gate("in", "open")
-        elif choice == "out":
-            set_gate("out", "open")
-        elif choice == "d1":
+        elif cmd in ["1", "2", "3", "4"]:
+            toggle_slot(int(cmd))
+        elif cmd == "in":
+            set_gate("gateIn")
+        elif cmd == "out":
+            set_gate("gateOut")
+        elif cmd == "d1":
             set_distance(45.0)
-        elif choice == "d2":
+        elif cmd == "d2":
             set_distance(18.0)
-        elif choice == "d3":
+        elif cmd == "d3":
             set_distance(7.0)
-        elif choice == "c":
+        elif cmd == "c":
             clear_all()
-        elif choice == "f":
+        elif cmd == "f":
             fill_all()
         else:
-            print("Lệnh không hợp lệ, vui lòng thử lại!")
+            print("⚠️ Lệnh không hợp lệ! Vui lòng xem bảng hướng dẫn trên.")
         
-        time.sleep(0.3)
+        time.sleep(1)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nĐã thoát bảng điều khiển.")

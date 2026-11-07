@@ -1,0 +1,54 @@
+services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    ports:
+      - "${MQTT_BIND_IP:-127.0.0.1}:1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
+  # =============================================================================
+  # 1. TIMESCALEDB (PostgreSQL 16 với TimescaleDB Extension)
+  # =============================================================================
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: smartparking-timescaledb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: smartparking
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d smartparking"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # =============================================================================
+  # 2. BACKEND API SERVICE (Node.js + Express + MQTT)
+  # =============================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smartparking-backend
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://postgres:postgres@timescaledb:5432/smartparking
+      MQTT_URL: "${MQTT_URL:-mqtt://mqtt:1883}"
+    ports:
+      - "3000:3000"
+    depends_on:
+      mqtt:
+        condition: service_started
+      timescaledb:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  timescaledb_data:
+    driver: local
