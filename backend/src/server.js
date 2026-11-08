@@ -39,6 +39,7 @@ const lotsState = Object.assign(Object.create(null), {
 });
 
 const latestOcrEvents = Object.create(null);
+const pendingOcrWrites = new Set();
 const slotReadings = new Map();
 const gateReports = new Map();
 const parkNodes = connectParkNodes({
@@ -63,6 +64,9 @@ const parkNodes = connectParkNodes({
   onGate(lotId, gate, { state, remoteEnabled }) {
     gateReports.set(`${lotId}/${gate}`, { remoteEnabled, seenAt: Date.now() });
     updateLotStatus(lotId, { gates: { [gate]: state } });
+  },
+  onOcr(lotId, data) {
+    void recordConfirmedOcr({ lotId, ...data, fee: 0, slot: null, vehicleName: "Phương tiện" });
   },
 });
 
@@ -321,6 +325,40 @@ app.post("/api/lots/:lotId/commands", async (req, res) => {
 /* =============================================================================
    AI CAMERA OCR & TRỪ TIỀN VÍ TỰ ĐỘNG
    ============================================================================= */
+async function recordConfirmedOcr(event) {
+  // Pi publishes its own gate command. A confirmation is a record, not a second command.
+  const previous = latestOcrEvents[event.lotId];
+  if (!previous || event.timestamp > previous.timestamp ||
+      (event.timestamp === previous.timestamp &&
+       (event.plate !== previous.plate || event.direction !== previous.direction))) {
+    latestOcrEvents[event.lotId] = event;
+  }
+
+  if (!isDbConnected()) return;
+  const key = JSON.stringify([event.lotId, event.direction, event.plate, event.timestamp]);
+  if (pendingOcrWrites.has(key)) return;
+  pendingOcrWrites.add(key);
+  try {
+    await insertOcrEvent(event, true);
+  } catch (error) {
+    console.error("[MQTT] Không lưu được sự kiện OCR:", error.message);
+  } finally {
+    pendingOcrWrites.delete(key);
+  }
+}
+
+function insertOcrEvent({ lotId, plate, direction, slot, vehicleName, fee, timestamp }, deduplicate = false) {
+  return pool.query(
+    `INSERT INTO ocr_events (time, lot_id, plate, direction, slot_number, vehicle_name, fee)
+     SELECT $1::timestamptz, $2, $3, $4, $5::integer, $6, $7::numeric
+     WHERE NOT $8::boolean OR NOT EXISTS (
+       SELECT 1 FROM ocr_events
+       WHERE time = $1::timestamptz AND lot_id = $2 AND plate = $3 AND direction = $4
+     )`,
+    [new Date(timestamp), lotId, plate, direction, slot, vehicleName, fee, deduplicate]
+  );
+}
+
 app.post("/api/lots/:lotId/ocr", async (req, res) => {
   const { lotId } = req.params;
   const {
@@ -353,11 +391,7 @@ app.post("/api/lots/:lotId/ocr", async (req, res) => {
   if (isDbConnected()) {
     try {
       // 1. Ghi Hypertable
-      await pool.query(
-        `INSERT INTO ocr_events (time, lot_id, plate, direction, slot_number, vehicle_name, fee)
-         VALUES (NOW(), $1, $2, $3, $4, $5, $6)`,
-        [lotId, plate, direction, slot, vehicleName, fee]
-      );
+      await insertOcrEvent(ocrEvent);
 
       // 2. Tìm chủ xe dựa vào biển số
       const vehicleRes = await pool.query(
